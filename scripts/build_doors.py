@@ -44,7 +44,7 @@ SOURCES = ["Cemel_Body_Paint", "Cemel_Trim_Interior", "Cemel_Wheels_Chassis", "C
 SHUT_Y = 0.19            # shut line between front and rear doors
 DOOR_Y = {"F": (-1.075, SHUT_Y), "R": (SHUT_Y, 1.285)}
 DOOR_Z = (0.24, 1.41)    # sill top to just under the roof rail
-TRUNK = dict(y=(1.90, 2.45), z=(0.665, 1.20), x=0.668)
+TRUNK = dict(y=(1.90, 2.45), z=(0.665, 1.20), x=0.668, top_z=0.975, rear_y=2.24, lamp_z=0.83, lower_x=0.57)
 TOL = 0.012
 
 
@@ -92,10 +92,18 @@ def door_of_point(p, loose=False):
 
 
 def in_trunk(p, loose=False):
+    """The lid is a shell: its top skin (from the hinge line back) and its rear face (down to the
+    plate). Anything lower under the top skin (hinge-area trim, lamp tops) is body."""
     t = TOL if loose else 0
     x, y, z = p
-    return (TRUNK["y"][0] - t <= y <= TRUNK["y"][1] + t and TRUNK["z"][0] - t <= z <= TRUNK["z"][1] + t
-            and abs(x) <= TRUNK["x"] + t)
+    # below the lid lamps the lid is only as wide as the plate area; the panels beside it, under
+    # the body-side tail lamps, are body
+    half_w = TRUNK["x"] if z >= TRUNK["lamp_z"] else TRUNK["lower_x"]
+    if abs(x) > half_w + t or y > TRUNK["y"][1] + t or z > TRUNK["z"][1] + t:
+        return False
+    top_skin = y >= TRUNK["y"][0] - t and z >= TRUNK["top_z"] - t
+    rear_face = y >= TRUNK["rear_y"] - t and z >= TRUNK["z"][0] - t
+    return top_skin or rear_face
 
 
 WHEELS = [(-1.44, 0.33), (1.36, 0.33)]   # (y, z) of the wheel centres
@@ -124,17 +132,16 @@ def part_owner(co):
 def split_candidate(src_name, mn, mx):
     """Parts cut face by face: one-sided strips and trim panels running through the door band.
     Parts reaching the ground (wheels, arch liners, underbody) and parts crossing the car's centre
-    line (dash, floor tub, headliner) are never cut. Paint parts are only cut if they are upper
-    window-frame strips; the rest of the paint shell is already split into panels."""
+    line (dash, floor tub, headliner) are never cut, nor is anything in the paint shell."""
     if mn[0] < 0 < mx[0] or mn[2] < 0.2:
         return False
     if max(abs(mn[0]), abs(mx[0])) < 0.66:
         return False
     if mx[1] < DOOR_Y["F"][0] or mn[1] > DOOR_Y["R"][1]:
         return False
-    if src_name == "Cemel_Body_Paint":
-        return mn[2] > 0.9 and mn[1] < SHUT_Y < mx[1]
-    return True
+    # The paint shell is already split into panels (door skins, mirrors, handles are whole parts).
+    # Its long strips above the doors are the roof-side rails, which belong to the body.
+    return src_name != "Cemel_Body_Paint"
 
 
 # ---------------------------------------------------------------------------
@@ -305,8 +312,11 @@ def world_verts(ob):
 
 
 def skin_verts(owner):
+    """Painted outer skin of an opening. For doors, only below the waist: the painted window
+    frame above it sits further inboard and would pull the hinge line into the cabin."""
     me = [o for o in pieces[owner] if o.name.endswith("Cemel_Body_Paint")][0].data
-    return np.array([v.co[:] for v in me.vertices])
+    co = np.array([v.co[:] for v in me.vertices])
+    return co if owner == "Trunk" else co[(co[:, 2] < 0.95) & (np.abs(co[:, 0]) > 0.74)]
 
 
 hinges = {}

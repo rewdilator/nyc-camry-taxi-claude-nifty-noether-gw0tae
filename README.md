@@ -72,10 +72,18 @@ wide badge lettering. Objects, meshes, collections and files are named `Cemel` /
 spread across the paint, trim, glass and chassis meshes. `scripts/build_doors.py` measures each
 door's outline from its outer skin (the exact cross-section of the skin at every 5 mm of height).
 Above the waistline it follows the window frame, the A-pillar and the quarter-window slope instead.
-- Pieces that fit completely inside a door, or inside the trunk lid, move to it whole.
-- Pieces that run across a shut line are cut exactly along the door edge first, so no jagged edges
-  are left. These are the window-frame strips and the side trim panels.
-- Wheel, tyre and wheel-arch parts are never taken, so the doors come away clean.
+- **Doors:** a door takes the outer skin, mirror, handle, window glass, black window sash and
+  chrome trim. The body keeps the painted roof-side rails above the doors, so opening a door leaves
+  the roof edge intact.
+- **Trim across a shut line:** side trim panels that run across a shut line are cut exactly along
+  the door edge, so no jagged edges are left.
+- **Wheels:** wheel, tyre and wheel-arch parts are never taken.
+- **Hinges:** each hinge line runs 2 cm behind the door's leading edge, on the outer skin.
+- **Trunk lid:** the lid is a shell. Its top skin runs from the hinge line back. Its rear face
+  carries the lid lamps, the CEMEL badge and the plate, down to the plate area. The panels under
+  the body-side tail lamps stay on the body.
+- **Around the trunk opening:** an inner panel closes the lid from the inside. Painted gutters and
+  lamp-housing backs close the opening, so nothing is torn or open when the lid is up.
 
 **NYC taxi livery.**
 - Body paint: NYC taxi yellow (sRGB 247/181/0) with a glossy clear coat.
@@ -115,8 +123,9 @@ rebuilds it like a real NYC yellow cab:
   - the Taxi Rider Bill of Rights, a "Buckle up" sticker and a no-smoking sticker
 - **For the driver:** a taximeter on the dash top showing $3.00 and HIRED in red LEDs, and the
   T-PEP driver monitor on an arm at the centre stack.
-- **Trunk:** a carpeted liner with wheel-arch humps, a load floor with a pull handle, a striker, and
-  a carpeted liner under the lid that moves with it.
+- **Trunk:** a carpeted liner with wheel-arch humps, a load floor with a pull handle, and a striker.
+  Under the lid there's a carpeted liner and an inner panel, both moving with the lid. Painted
+  gutters run along the sides of the opening.
 
 ![Taxi TV and card reader](renders/interior_taxi_tv.png)
 ![Taximeter and driver monitor](renders/interior_dashboard.png)

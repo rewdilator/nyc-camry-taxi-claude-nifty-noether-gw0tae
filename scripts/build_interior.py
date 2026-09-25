@@ -380,7 +380,14 @@ for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Doo
     for j, z in enumerate(zs):
         for i, y in enumerate(ys):
             h = d_bvh.ray_cast(Vector((sgn * 0.3, y, z)), Vector((sgn, 0, 0)), 1.0)[0]
-            grid[i, j] = h - Vector((sgn * 0.012, 0, 0)) if h is not None and abs(h.x) > 0.72 else None
+            out = d_bvh.ray_cast(Vector((sgn * 1.4, y, z)), Vector((-sgn, 0, 0)), 1.0)[0]
+            if h is None or abs(h.x) < 0.72 or out is None:
+                grid[i, j] = None
+                continue
+            # 12 mm inside the inner surface, and never closer than 20 mm to the outer skin (the skin
+            # curves in at the bottom of the door, where a card could otherwise poke through)
+            xc = min(abs(h.x) - 0.012, abs(out.x) - 0.020)
+            grid[i, j] = Vector((sgn * xc, h.y, h.z))
     vi, verts, faces = {}, [], []
     for k, p_ in grid.items():
         if p_ is not None:
@@ -396,8 +403,8 @@ for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Doo
         c = Vector((sgn * 0.0, (ys[0] + ys[-1]) / 2 - 0.12, 0.47))
         h = d_bvh.ray_cast(Vector((sgn * 0.3, c.y, c.z)), Vector((sgn, 0, 0)), 1.0)[0]
         if h is not None:
-            g = box(f"{door.name}_Speaker_Grille", (0.012, 0.17, 0.17), h - Vector((sgn * 0.024, 0, 0)),
-                    black_plastic, bevel=0.03, segments=6)
+            g = box(f"{door.name}_Speaker_Grille", (0.010, 0.17, 0.17), h - Vector((sgn * 0.026, 0, 0)),
+                    black_plastic, bevel=0.004, segments=2)
             g.parent = door
             g.matrix_parent_inverse = door.matrix_world.inverted()
 
@@ -440,6 +447,66 @@ for (i, j) in grid:
         faces.append(tuple(vi[k] for k in q))
 bm_lid.free()
 sheet("Trunk_Lid_Liner", verts, faces, carpet, 0.006, parent=lid).data.shade_smooth()
+
+# Inner panel behind the lid's rear face (a real lid is a closed shell), ray-cast from inside.
+xs = np.linspace(-0.52, 0.52, 21)
+zs = np.linspace(0.72, 1.02, 9)
+grid = {}
+for j, z in enumerate(zs):
+    for i, x in enumerate(xs):
+        h = lid_bvh.ray_cast(Vector((x, 2.0, z)), Vector((0, 1, 0)), 0.6)[0]
+        grid[i, j] = h - Vector((0, 0.022, 0)) if h is not None and h.y > 2.2 else None
+vi, verts, faces = {}, [], []
+for k, p_ in grid.items():
+    if p_ is not None:
+        vi[k] = len(verts)
+        verts.append(p_)
+for (i, j) in grid:
+    q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+    if all(k in vi for k in q):
+        faces.append(tuple(vi[k] for k in q))
+sheet("Trunk_Lid_Inner_Panel", verts, faces, trim, 0.006, parent=lid).data.shade_smooth()
+
+# Trunk opening surround. With the lid up, the source body is open to the lamp cavities: a painted
+# gutter runs along each side of the opening under the lid edge, and dark lamp-housing backs close
+# the lower corners behind the lid.
+paint = bpy.data.materials["NYC_Taxi_Yellow_Paint"]
+bm_body = bmesh.new()
+for n in ("Cemel_Body_Paint", "Cemel_Trim_Interior", "Cemel_Glass_Lamps", "Cemel_Lamp_Lenses"):
+    bm_body.from_mesh(bpy.data.objects[n].data)
+body_bvh = BVHTree.FromBMesh(bm_body)
+bm_lid = bmesh.new()
+bm_lid.from_mesh(lid.data)
+bm_lid.transform(lid.matrix_world)
+lid_bvh = BVHTree.FromBMesh(bm_lid)
+for s_, tag in ((1, "L"), (-1, "R")):
+    inner, outer = [], []
+    for y in np.linspace(1.95, 2.28, 12):
+        top = lid_bvh.ray_cast(Vector((s_ * 0.60, y, 0.80)), Z, 0.6)[0]
+        zg = (top.z if top is not None else 1.0) - 0.035
+        hit = body_bvh.ray_cast(Vector((s_ * 0.45, y, zg)), Vector((s_, 0, 0)), 0.35)[0]
+        xo = min(abs(hit.x) - 0.004, 0.76) if hit is not None else 0.70
+        inner.append((s_ * (TX - 0.005), y, zg))
+        outer.append((s_ * xo, y, zg))
+    pts = inner + outer
+    n_ = len(inner)
+    faces = [(i, i + 1, n_ + i + 1, n_ + i) if s_ > 0 else (i, n_ + i, n_ + i + 1, i + 1) for i in range(n_ - 1)]
+    sheet(f"Trunk_Gutter_{tag}", pts, faces, paint, 0.004).data.shade_smooth()
+    # lamp-housing back behind the lid's lower corner
+    yb = 2.27
+    zs_ = np.linspace(0.60, 0.90, 7)
+    left, right = [], []
+    for z in zs_:
+        hit = body_bvh.ray_cast(Vector((s_ * 0.40, yb, z)), Vector((s_, 0, 0)), 0.40)[0]
+        xo = min(abs(hit.x) - 0.004, 0.76) if hit is not None else 0.72
+        left.append((s_ * (TX - 0.005), yb, z))
+        right.append((s_ * xo, yb, z))
+    pts = left + right
+    n_ = len(left)
+    faces = [(i, n_ + i, n_ + i + 1, i + 1) if s_ > 0 else (i, i + 1, n_ + i + 1, n_ + i) for i in range(n_ - 1)]
+    sheet(f"Trunk_Lamp_Housing_Back_{tag}", pts, faces, black_plastic, 0.006)
+bm_body.free()
+bm_lid.free()
 
 # ---------------------------------------------------------------------------
 # 4. Partition: traced from the cabin cross-section just behind the front head restraints
