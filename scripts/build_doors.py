@@ -237,7 +237,8 @@ CODE = {o: i + 1 for i, o in enumerate(OWNERS)}      # 0 = stays on the body
 CANDIDATE = 99
 DELETE = 97
 SILL_Z = 0.97             # door trim below the window sill is rebuilt as a proper door card
-B_PILLAR = (0.12, 0.27)   # inner B-pillar trim between the doors stays on the body
+B_PILLAR = (0.12, 0.27)
+BELT_TOP = 1.06           # the sill garnish along the door's belt line goes too (the card has its own)   # inner B-pillar trim between the doors stays on the body
 report = {}
 for src_name in SOURCES:
     src = bpy.data.objects[src_name]
@@ -275,7 +276,8 @@ for src_name in SOURCES:
                     # below the sill: low-poly side wall, replaced by a door card; above it: A-pillar,
                     # roof-rail and B-pillar trim inside the glass line, which stays on the body
                     in_b_pillar = B_PILLAR[0] < c.y < B_PILLAR[1]
-                    f[tag] = DELETE if c.z < SILL_Z and not in_b_pillar else 0
+                    belt = c.z < BELT_TOP and abs(c.x) > 0.70     # the source's window-sill garnish
+                    f[tag] = DELETE if (c.z < SILL_Z or belt) and not in_b_pillar else 0
                 else:
                     f[tag] = CODE[o] if o else 0
     counts = {o: sum(1 for f in bm.faces if f[tag] == CODE[o]) for o in OWNERS}

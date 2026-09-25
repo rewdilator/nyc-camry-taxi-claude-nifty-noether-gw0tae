@@ -173,6 +173,50 @@ def lower_floor():
 
 
 lower_floor()
+
+
+def remove_source_parts():
+    """Delete the source's low-poly front seat backs and head restraints, the rear bench back and the
+    oversized steering wheel; section 3 builds proper ones. Parts are matched by their bounding box,
+    so a second run finds nothing left to delete."""
+    def front_seat(mn, mx):
+        return (mn[0] * mx[0] > 0 and 0.04 < mn[1] and mx[1] < 0.29 and mn[2] > 0.43 and mx[2] < 1.31
+                and 0.07 < min(abs(mn[0]), abs(mx[0])) and max(abs(mn[0]), abs(mx[0])) < 0.66)
+
+    def rear_back(mn, mx):
+        return 0.83 < mn[1] and mx[1] < 1.27 and mn[2] > 0.49 and mx[2] < 1.27 and max(abs(mn[0]), abs(mx[0])) < 0.67
+
+    def wheel(mn, mx):
+        return mn[0] > 0.10 and mx[0] < 0.65 and mn[1] > -0.58 and mx[1] < -0.36 and mn[2] > 0.64 and mx[2] < 1.11
+
+    me = bpy.data.objects["Cemel_Trim_Interior"].data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    seen, doomed = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        stack, comp = [v], []
+        seen.add(v.index)
+        while stack:
+            a = stack.pop()
+            comp.append(a)
+            for e in a.link_edges:
+                b = e.other_vert(a)
+                if b.index not in seen:
+                    seen.add(b.index)
+                    stack.append(b)
+        co = np.array([c.co[:] for c in comp])
+        mn, mx = co.min(0), co.max(0)
+        if front_seat(mn, mx) or rear_back(mn, mx) or wheel(mn, mx):
+            doomed.extend(comp)
+    bmesh.ops.delete(bm, geom=doomed, context="VERTS")
+    bm.to_mesh(me)
+    bm.free()
+
+
+remove_source_parts()
 openings = [o for o in bpy.data.collections["Doors_Trunk"].objects if o.type == "MESH"]
 bm_car = bmesh.new()
 for ob in [bpy.data.objects[n] for n in ("Cemel_Body_Paint", "Cemel_Trim_Interior", "Cemel_Glass_Lamps")] + openings:
@@ -212,6 +256,18 @@ def box(name, size, loc, mat, bevel=0.0, segments=3, rot=None):
         mod.segments = segments
         mod.limit_method = "ANGLE"
         me.shade_smooth()
+    return add(ob)
+
+
+def cylinder(name, r, depth, loc, mat, segments=24):
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segments, radius1=r, radius2=r, depth=depth)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(mat)
+    ob = bpy.data.objects.new(name, me)
+    ob.location = loc
     return add(ob)
 
 
@@ -331,7 +387,9 @@ for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
     box(f"Seat_Belt_Buckle_{tag}", (0.03, 0.022, 0.075), (xo * 0.13, 0.04, SEAT_Z + 0.07), black_plastic,
         bevel=0.006, rot=(math.radians(15), 0, 0))
 
-rear_hw = min(abs(cast((0, 0.7, SEAT_Z + 0.12), (s, 0, 0)).x) for s in (-1, 1)) - 0.02
+# rear bench half-width: inside the door cards (the ray now reaches the door skin, the source's side
+# trim having been replaced by door cards 6.5 cm inside it)
+rear_hw = min(min(abs(cast((0, 0.7, SEAT_Z + 0.12), (s, 0, 0)).x) for s in (-1, 1)) - 0.12, 0.68)
 REAR_Y0, REAR_Y1 = 0.46, 0.96
 box("Seat_Base_Rear", (2 * rear_hw - 0.04, REAR_Y1 - REAR_Y0 - 0.02, SEAT_Z - FLOOR_Z),
     (0, (REAR_Y0 + REAR_Y1) / 2 + 0.01, (SEAT_Z + FLOOR_Z) / 2), cloth, bevel=0.02)
@@ -343,14 +401,134 @@ for x in (-0.43, 0.43):  # outboard seat contours
 for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckles and latches
     box(f"Seat_Belt_Buckle_Rear_{i}", (0.03, 0.02, 0.07), (x, REAR_Y1 - 0.03, SEAT_Z + CUSH_T + 0.03),
         black_plastic, bevel=0.006, rot=(math.radians(-20), 0, 0))
-# rear belts come out of the parcel shelf and lie down the seat back
-for x, tag in ((0.47, "L"), (0.0, "C"), (-0.47, "R")):
-    # anchor on the parcel shelf just behind the head restraints (cast down, below the rear glass)
+# ---------------------------------------------------------------------------
+# 3d. Seat backs, head restraints, steering wheel (replacing the source's low-poly ones)
+# ---------------------------------------------------------------------------
+insert_mat = material("Interior_Seat_Insert", (0.028, 0.028, 0.032, 1), rough=0.95)
+leather = material("Interior_Wheel_Leather", (0.018, 0.018, 0.019, 1), rough=0.45)
+
+
+def tilted(name, size, pivot, local, tilt, mat, bevel=0.0, segments=3, subsurf=0):
+    """A box placed in a frame tilted back by `tilt` (radians, about X) around `pivot`."""
+    R = Matrix.Rotation(tilt, 4, "X")
+    ob = box(name, size, (0, 0, 0), mat, bevel=bevel, segments=segments)
+    ob.matrix_world = Matrix.Translation(pivot) @ R @ Matrix.Translation(local)
+    if subsurf:
+        m = ob.modifiers.new("Subsurf", "SUBSURF")
+        m.levels = m.render_levels = subsurf
+    return ob
+
+
+def seat_back(tag, x, pivot, tilt, width, height, thick, headrest=(0.26, 0.085, 0.165), bolsters=True):
+    """Backrest pad + side bolsters + insert + head restraint on two chrome posts, tilted about its foot."""
+    tilted(f"Seat_Back_{tag}", (width - 0.02, thick, height), pivot, (x, 0, height / 2), tilt, cloth,
+           bevel=0.03, segments=4)
+    tilted(f"Seat_Back_Insert_{tag}", (width * 0.6, 0.008, height * 0.72), pivot, (x, -thick / 2, height * 0.46),
+           tilt, insert_mat, bevel=0.004)
+    if bolsters:
+        for sx in (-1, 1):
+            b = tilted(f"Seat_Back_Bolster_{tag}_{'L' if sx > 0 else 'R'}", (0.07, thick + 0.035, height * 0.82),
+                       pivot, (x + sx * (width / 2 - 0.03), -0.012, height * 0.43), tilt, cloth,
+                       bevel=0.028, segments=4)
+            b.rotation_euler.z += math.radians(-10 * sx)
+    if headrest:
+        hw, hd, hh = headrest
+        tilted(f"Seat_Headrest_{tag}", (hw, hd, hh), pivot, (x, 0.005, height + 0.075 + hh / 2), tilt, cloth,
+               bevel=0.035, segments=4)
+        for px in (-0.06, 0.06):
+            post = cylinder(f"Seat_Headrest_Post_{tag}_{'L' if px > 0 else 'R'}", 0.0055, 0.09, (0, 0, 0), chrome, 10)
+            post.matrix_world = (Matrix.Translation(pivot) @ Matrix.Rotation(tilt, 4, "X")
+                                 @ Matrix.Translation((x + px, 0.0, height + 0.035)))
+
+
+# front seats: foot of the backrest on the rear of the cushion, reclined 10 degrees
+for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
+    seat_back(tag, x, Vector((0, 0.165, SEAT_Z + 0.05)), math.radians(-10), 0.50, 0.58, 0.085)
+    xo = x + math.copysign(0.265, x)
+    box(f"Seat_Side_Shield_{tag}", (0.022, 0.34, 0.10), (xo, -0.10, SEAT_Z + 0.02), trim, bevel=0.008)
+    box(f"Seat_Recline_Lever_{tag}", (0.018, 0.10, 0.02), (xo + math.copysign(0.012, x), 0.02, SEAT_Z + 0.045),
+        black_plastic, bevel=0.006)
+
+# rear bench back: two outboard seats and a narrower centre with a fold-down armrest, three restraints
+RB_PIVOT = Vector((0, REAR_Y1 - 0.02, SEAT_Z + CUSH_T - 0.01))
+RB_TILT = math.radians(-26)
+RB_H, RB_T = 0.54, 0.11
+tilted("Seat_Rear_Back", (2 * rear_hw - 0.01, RB_T, RB_H), RB_PIVOT, (0, 0, RB_H / 2), RB_TILT, cloth,
+       bevel=0.03, segments=4)
+for x, w, tag in ((0.40, 0.44, "L"), (-0.40, 0.44, "R")):
+    seat_back(f"Rear_{tag}", x, RB_PIVOT + Vector((0, -0.012, 0)), RB_TILT, w, RB_H - 0.02, RB_T - 0.02,
+              bolsters=False)
+    tilted(f"Seat_Rear_Bolster_Back_{tag}", (0.07, RB_T + 0.03, RB_H * 0.8), RB_PIVOT,
+           (math.copysign(rear_hw - 0.045, x), -0.015, RB_H * 0.42), RB_TILT, cloth, bevel=0.028, segments=4)
+tilted("Seat_Rear_Armrest", (0.26, 0.012, RB_H * 0.72), RB_PIVOT, (0, -RB_T / 2 - 0.004, RB_H * 0.45), RB_TILT,
+       insert_mat, bevel=0.006)
+tilted("Seat_Rear_Armrest_Pull", (0.06, 0.012, 0.018), RB_PIVOT, (0, -RB_T / 2 - 0.01, RB_H * 0.78), RB_TILT,
+       black_plastic, bevel=0.004)
+tilted("Seat_Headrest_Rear_C", (0.20, 0.075, 0.12), RB_PIVOT, (0, 0.0, RB_H + 0.07), RB_TILT, cloth,
+       bevel=0.03, segments=4)
+for x in (-0.25, 0.25):     # child-seat anchor tags in the seat bight
+    box(f"Seat_Rear_Isofix_{'L' if x > 0 else 'R'}", (0.035, 0.012, 0.03), (x, REAR_Y1 - 0.045, SEAT_Z + CUSH_T + 0.02),
+        black_plastic, bevel=0.004)
+
+# rear belts: from guides on the parcel shelf, down the face of the outboard backrests
+n_rb = Matrix.Rotation(RB_TILT, 4, "X") @ Vector((0, -1, 0))
+for x, tag in ((0.60, "L"), (0.0, "C"), (-0.60, "R")):
     top = cast((x, 1.33, 1.27), -Z, trim_bvh, 0.4) or Vector((x, 1.33, 1.16))
-    strap(f"Seat_Belt_Rear_{tag}", top + Vector((0, -0.01, 0.005)),
-          (x * 1.12, REAR_Y1 - 0.04, SEAT_Z + CUSH_T + 0.02), 0.048, webbing, face=Vector((0, -1, 0.6)))
-    box(f"Seat_Belt_Guide_Rear_{tag}", (0.07, 0.03, 0.015), top + Vector((0, 0, 0.004)), black_plastic,
-        bevel=0.004)
+    face_top = RB_PIVOT + Matrix.Rotation(RB_TILT, 4, "X") @ Vector((x, 0, RB_H)) + n_rb * (RB_T / 2 + 0.012)
+    face_bot = RB_PIVOT + Matrix.Rotation(RB_TILT, 4, "X") @ Vector((x * 0.8, 0, 0.06)) + n_rb * (RB_T / 2 + 0.012)
+    strap(f"Seat_Belt_Rear_{tag}_Upper", top + Vector((0, -0.01, 0.005)), face_top, 0.048, webbing,
+          face=Vector((0, -1, 0.6)))
+    strap(f"Seat_Belt_Rear_{tag}", face_top, face_bot, 0.048, webbing, face=n_rb)
+    box(f"Seat_Belt_Guide_Rear_{tag}", (0.07, 0.03, 0.015), top + Vector((0, 0, 0.004)), black_plastic, bevel=0.004)
+
+# steering wheel: 375 mm leather rim, three spokes, airbag hub with badge, column shroud and stalks.
+# Local frame: the wheel lies in its XZ plane, +Y points at the driver, the column goes to -Y.
+WC = Vector((0.375, -0.485, 0.895))
+W_TILT = math.radians(24)                   # top of the wheel leans forward
+WM = Matrix.Translation(WC) @ Matrix.Rotation(W_TILT, 4, "X")
+R_RIM, r_rim = 0.1875, 0.0165
+bm = bmesh.new()
+nu, nv = 48, 12
+ring = []
+for i in range(nu):
+    a = 2 * math.pi * i / nu
+    row = []
+    for j in range(nv):
+        b = 2 * math.pi * j / nv
+        rr = R_RIM + r_rim * math.cos(b)
+        row.append(bm.verts.new((rr * math.cos(a), r_rim * math.sin(b), rr * math.sin(a))))
+    ring.append(row)
+for i in range(nu):
+    for j in range(nv):
+        bm.faces.new((ring[i][j], ring[(i + 1) % nu][j], ring[(i + 1) % nu][(j + 1) % nv], ring[i][(j + 1) % nv]))
+me = bpy.data.meshes.new("Steering_Wheel_Rim")
+bm.to_mesh(me)
+bm.free()
+me.materials.append(leather)
+me.shade_smooth()
+rim = add(bpy.data.objects.new(me.name, me))
+rim.matrix_world = WM
+
+
+def wheel_part(name, size, local, mat, bevel=0.0, segments=3, rot_y=0.0):
+    ob = box(name, size, (0, 0, 0), mat, bevel=bevel, segments=segments)
+    ob.matrix_world = WM @ Matrix.Translation(local) @ Matrix.Rotation(rot_y, 4, "Y")
+    return ob
+
+
+wheel_part("Steering_Wheel_Hub", (0.15, 0.06, 0.12), (0, 0.012, -0.005), leather, bevel=0.03, segments=4)
+wheel_part("Steering_Wheel_Badge", (0.045, 0.004, 0.03), (0, -0.02, 0.005), chrome, bevel=0.012, segments=4)
+for side in (-1, 1):
+    wheel_part(f"Steering_Wheel_Spoke_{'L' if side > 0 else 'R'}", (0.11, 0.022, 0.05),
+               (side * 0.125, 0.012, -0.01), trim, bevel=0.01)
+    for k in range(3):
+        wheel_part(f"Steering_Wheel_Button_{'L' if side > 0 else 'R'}_{k}", (0.016, 0.006, 0.012),
+                   (side * (0.10 + 0.022 * (k % 2)), -0.001, 0.008 - 0.018 * (k // 2)), black_plastic, bevel=0.003)
+wheel_part("Steering_Wheel_Spoke_Lower", (0.05, 0.022, 0.12), (0, 0.012, -0.12), trim, bevel=0.01)
+wheel_part("Steering_Column_Shroud", (0.12, 0.24, 0.10), (0, -0.15, -0.03), trim, bevel=0.025, segments=3)
+for side, tag in ((1, "Turn"), (-1, "Wiper")):
+    st = cylinder(f"Steering_Stalk_{tag}", 0.007, 0.13, (0, 0, 0), black_plastic, 10)
+    st.matrix_world = WM @ Matrix.Translation((side * 0.09, -0.06, 0.0)) @ Matrix.Rotation(math.radians(90), 4, "Y")
 
 # Rubber floor mats
 for x0, x1, tag in ((0.12, 0.70, "Driver"), (-0.70, -0.12, "Passenger")):
@@ -358,6 +536,24 @@ for x0, x1, tag in ((0.12, 0.70, "Driver"), (-0.70, -0.12, "Passenger")):
         bevel=0.004)
 box("Floor_Mat_Rear", (2 * rear_hw - 0.1, 0.10, 0.008), (0, (0.36 + REAR_Y0) / 2, FLOOR_Z + 0.004), rubber,
     bevel=0.003)
+
+# carpet over the source floor tub, sill scuff plates, parcel-shelf speakers and brake light
+box("Floor_Carpet", (1.46, 1.36, 0.006), (0, -0.22, FLOOR_Z + 0.001), carpet)
+for s_ in (1, -1):
+    for y0, y1, tag in ((-0.98, 0.14, "F"), (0.24, 1.00, "R")):
+        box(f"Sill_Scuff_Plate_{'L' if s_ > 0 else 'R'}{tag}", (0.06, y1 - y0, 0.006),
+            (s_ * 0.83, (y0 + y1) / 2, SILL_Z + 0.012), black_plastic, bevel=0.002)
+        box(f"Sill_Scuff_Insert_{'L' if s_ > 0 else 'R'}{tag}", (0.02, (y1 - y0) * 0.7, 0.002),
+            (s_ * 0.83, (y0 + y1) / 2, SILL_Z + 0.016), chrome)
+for x in (-0.42, 0.42):
+    h = cast((x, 1.40, 1.30), -Z, trim_bvh, 0.4)
+    if h is not None:
+        cylinder(f"Parcel_Shelf_Speaker_{'L' if x > 0 else 'R'}", 0.065, 0.006, h + Z * 0.004, black_plastic, 24)
+h = cast((0, 1.43, 1.30), -Z, trim_bvh, 0.4)
+if h is not None:
+    box("Parcel_Shelf_Brake_Light", (0.24, 0.045, 0.03), h + Z * 0.016, black_plastic, bevel=0.006)
+    box("Parcel_Shelf_Brake_Light_Lens", (0.22, 0.004, 0.018), h + Vector((0, 0.024, 0.016)),
+        material("Interior_Brake_Light_Lens", (0.5, 0.02, 0.02, 1), rough=0.2), bevel=0.001)
 
 box("Console_Base", (0.18, 0.86, 0.74 - FLOOR_Z), (0, -0.44, (0.74 + FLOOR_Z) / 2), trim, bevel=0.02)
 box("Console_Armrest", (0.19, 0.30, 0.05), (0, -0.10, SEAT_Z + 0.185), cloth, bevel=0.018, segments=4)
@@ -374,18 +570,6 @@ lens_mat = material("Interior_Lamp_Lens", (0.85, 0.85, 0.8, 1), rough=0.35)
 mirror_mat = material("Interior_Vanity_Mirror", (0.9, 0.9, 0.9, 1), rough=0.05, metal=1.0)
 
 
-def cylinder(name, r, depth, loc, mat, segments=24):
-    bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segments, radius1=r, radius2=r, depth=depth)
-    me = bpy.data.meshes.new(name)
-    bm.to_mesh(me)
-    bm.free()
-    me.materials.append(mat)
-    ob = bpy.data.objects.new(name, me)
-    ob.location = loc
-    return add(ob)
-
-
 def dash_face_y(x, z):
     h = cast((x, -0.3, z), FWD, trim_bvh, 1.0)
     return h.y if h is not None else -0.70
@@ -400,8 +584,9 @@ def vent(name, x, z, w=0.10, h=0.035, depth=0.02):
 
 
 # instrument cluster in the recess under the cluster hood, facing the driver through the wheel
-quad("Dash_Gauge_Cluster", (0.38, -0.765, 0.985), 0.30, 0.1125, Vector((0, 1, 0.28)), cluster_mat)
-box("Dash_Gauge_Cluster_Backing", (0.32, 0.02, 0.13), (0.38, -0.78, 0.985), black_plastic,
+cl_y = dash_face_y(0.38, 0.975) + 0.004
+quad("Dash_Gauge_Cluster", (0.38, cl_y, 0.975), 0.30, 0.1125, Vector((0, 1, 0.28)), cluster_mat)
+box("Dash_Gauge_Cluster_Bezel", (0.32, 0.012, 0.13), (0.38, cl_y - 0.004, 0.975), black_plastic, bevel=0.004,
     rot=(math.radians(-15.6), 0, 0))
 # 8 in touchscreen on the centre of the dash, vents below it and at both ends, climate controls
 scr_x, scr_z = -0.06, 0.955
@@ -531,13 +716,27 @@ for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Doo
         return None if sx is None else max(sx - CARD_OFF - extra, 0.72)
 
     zs = list(np.linspace(FLOOR_Z + 0.03, 0.93, 16))
-    fine = np.linspace(y_a - 0.04, y_b + 0.04, 120)
+    fine = np.arange(dy.min() - 0.03, dy.max() + 0.03, 0.01)
+
+    def refine(y_in, y_out, z):
+        """Bisect between a y on the skin and a y off it, to the skin edge within 1 mm."""
+        for _ in range(7):
+            m = (y_in + y_out) / 2
+            y_in, y_out = (m, y_out) if skin_x(m, z) is not None else (y_in, m)
+        return y_in
+
+    def skin_edges(z):
+        """Front and rear edge of the door skin at height z (the rear door curves round the wheel arch)."""
+        ok = [y for y in fine if skin_x(y, z) is not None]
+        if not ok:
+            return None
+        return refine(min(ok), min(ok) - 0.01, z), refine(max(ok), max(ok) + 0.01, z)
+
+    CARD_INSET = 0.04        # the card stops short of the door edge; a shut face closes the gap
 
     def row_span(z):
-        """Where the skin exists at height z (the rear door's lower edge curves round the wheel arch),
-        so each row's points spread over its own span and the card edge follows the door's shape."""
-        ok = [y for y in fine if skin_x(y, z) is not None]
-        return (max(min(ok), y_a), min(max(ok), y_b)) if ok else None
+        e = skin_edges(z)
+        return None if e is None else (e[0] + CARD_INSET, e[1] - CARD_INSET)
 
     NU = 30
     grid = {}
@@ -558,6 +757,79 @@ for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Doo
                             if g is not None and abs(g.x) - 0.012 > abs(top.x) else None)
     ys = np.linspace(y_a, y_b, NU)
     cards.append(grid_sheet(f"{door.name}_Door_Card", grid, NU, len(zs) + 1, card_mat, sgn, 0.01, door))
+
+    # Shut faces: painted door edges from the card out to the skin (front, rear and bottom), so an
+    # open door reads as a closed pressed-steel shell rather than a single skin.
+    sf_v, sf_f = [], []
+
+    def sf_quad(a, b, c, d):
+        base = len(sf_v)
+        sf_v.extend([a, b, c, d])
+        sf_f.append((base, base + 1, base + 2, base + 3))
+
+    edge_pts = {}
+    for j, z in enumerate(zs):
+        e = skin_edges(z)
+        if e is None or grid[0, j] is None or grid[NU - 1, j] is None:
+            continue
+        for side, ye in ((0, e[0]), (1, e[1])):
+            sx = skin_x(ye + (0.002 if side == 0 else -0.002), z)
+            if sx is not None:
+                edge_pts[side, j] = (grid[0 if side == 0 else NU - 1, j], Vector((sgn * (sx - 0.002), ye, z)))
+    for side in (0, 1):
+        for j in range(len(zs) - 1):
+            if (side, j) in edge_pts and (side, j + 1) in edge_pts:
+                c0, s0 = edge_pts[side, j]
+                c1, s1 = edge_pts[side, j + 1]
+                sf_quad(c0, c1, s1, s0)
+    bottom = []
+    for i in range(NU):
+        c = grid[i, 0]
+        if c is None:
+            continue
+        zb = None
+        for z in np.arange(zs[0], 0.20, -0.01):
+            if skin_x(c.y, z) is None:
+                break
+            zb = z
+        if zb is not None and zb < zs[0] - 0.005:
+            bottom.append((c, Vector((sgn * (skin_x(c.y, zb) - 0.002), c.y, zb))))
+    for (c0, s0), (c1, s1) in zip(bottom, bottom[1:]):
+        sf_quad(c0, c1, s1, s0)
+    me = bpy.data.meshes.new(f"{door.name}_Shut_Face")
+    me.from_pydata([v[:] for v in sf_v], [], sf_f)
+    me.materials.append(bpy.data.materials["NYC_Taxi_Yellow_Paint"])
+    door_child(add(bpy.data.objects.new(me.name, me)), door)
+
+    # Body jamb on the free edge (hinge side of the front doors, closing side of the rear doors): a
+    # painted return with a black rubber seal just outside the door's edge. The B-pillar edge
+    # between the two doors already has the pillar and its trim.
+    side = 0 if front else 1
+    jp, js = [], []
+    for j, z in enumerate(zs):
+        if (side, j) not in edge_pts:
+            continue
+        _, s_ = edge_pts[side, j]
+        out = -0.006 if side == 0 else 0.006
+        xo = abs(s_.x)
+        jp.append((Vector((sgn * (xo - 0.004), s_.y + out, z)), Vector((sgn * (xo - 0.055), s_.y + out, z))))
+        js.append((Vector((sgn * (xo - 0.055), s_.y + out * 1.5, z)), Vector((sgn * (xo - 0.078), s_.y + out * 1.5, z))))
+    for nm, pts, mat in (("Jamb", jp, bpy.data.materials["NYC_Taxi_Yellow_Paint"]), ("Seal", js, rubber)):
+        verts, faces = [], []
+        for (a0, b0), (a1, b1) in zip(pts, pts[1:]):
+            base = len(verts)
+            verts.extend([a0, a1, b1, b0])
+            faces.append((base, base + 1, base + 2, base + 3))
+        me = bpy.data.meshes.new(f"Body_{nm}_{door.name[5:]}")
+        me.from_pydata([v[:] for v in verts], [], faces)
+        me.materials.append(mat)
+        add(bpy.data.objects.new(me.name, me))
+
+    # hinges on the hinge line (they stay put while the door turns about them)
+    hx, hy = door.location.x, door.location.y
+    for hz in (0.48, 0.80):
+        cylinder(f"{door.name}_Hinge_{'Lower' if hz < 0.6 else 'Upper'}", 0.011, 0.07,
+                 (hx - sgn * 0.004, hy + 0.004, hz), steel, segments=12)
 
     # cloth insert across the middle of the card
     zi = np.linspace(0.71, 0.86, 5)
@@ -670,6 +942,88 @@ for (i, j) in grid:
         faces.append(tuple(vi[k] for k in q))
 sheet("Trunk_Lid_Inner_Panel", verts, faces, trim, 0.006, parent=lid).data.shade_smooth()
 
+# Lid shut faces: painted returns from the liners out to the skin edge along both sides, the front
+# edge and the bottom of the rear face, so the lid reads as a pressed shell when it is up.
+paint_mat = bpy.data.materials["NYC_Taxi_Yellow_Paint"]
+
+
+def lid_top(x, y):
+    h = lid_bvh.ray_cast(Vector((x, y, 1.5)), -Z, 0.6)[0]
+    return h
+
+
+lv, lf = [], []
+
+
+def lid_quad(a, b, c, d):
+    base = len(lv)
+    lv.extend([a, b, c, d])
+    lf.append((base, base + 1, base + 2, base + 3))
+
+
+side_rows = []
+for y in np.linspace(1.97, 2.25, 11):
+    row = []
+    for s_ in (1, -1):
+        liner = lid_bvh.ray_cast(Vector((s_ * 0.56, y, 0.85)), Z, 0.5)[0]
+        xe = None
+        for x in np.arange(0.56, 0.70, 0.004):
+            if lid_top(s_ * x, y) is None:
+                break
+            xe = x
+        if liner is None or xe is None:
+            row.append(None)
+            continue
+        top = lid_top(s_ * xe, y)
+        row.append((liner - Z * 0.018, Vector((s_ * xe, y, top.z - 0.003))))
+    side_rows.append(row)
+for a, b in zip(side_rows, side_rows[1:]):
+    for k in (0, 1):
+        if a[k] and b[k]:
+            lid_quad(a[k][0], b[k][0], b[k][1], a[k][1])
+front = []
+for x in np.linspace(-0.54, 0.54, 19):
+    liner = lid_bvh.ray_cast(Vector((x, 1.97, 0.85)), Z, 0.5)[0]
+    ye = None
+    for y in np.arange(1.97, 1.88, -0.004):
+        if lid_top(x, y) is None:
+            break
+        ye = y
+    if liner is not None and ye is not None:
+        top = lid_top(x, ye)
+        front.append((liner - Z * 0.018, Vector((x, ye, top.z - 0.003))))
+for (c0, s0), (c1, s1) in zip(front, front[1:]):
+    lid_quad(c0, c1, s1, s0)
+# body-side weatherstrip along both sides of the lid opening, just under the lid's edge
+for k, tag in ((0, "L"), (1, "R")):
+    pts = [r[k][1] for r in side_rows if r[k]]
+    verts, faces = [], []
+    for a, b in zip(pts, pts[1:]):
+        sa, sb = (1 if a.x > 0 else -1), (1 if b.x > 0 else -1)
+        base = len(verts)
+        verts.extend([Vector((sa * (abs(a.x) + 0.006), a.y, a.z - 0.010)), Vector((sb * (abs(b.x) + 0.006), b.y, b.z - 0.010)),
+                      Vector((sb * (abs(b.x) - 0.024), b.y, b.z - 0.022)), Vector((sa * (abs(a.x) - 0.024), a.y, a.z - 0.022))])
+        faces.append((base, base + 1, base + 2, base + 3))
+    me_s = bpy.data.meshes.new(f"Trunk_Side_Seal_{tag}")
+    me_s.from_pydata([v[:] for v in verts], [], faces)
+    me_s.materials.append(rubber)
+    add(bpy.data.objects.new(me_s.name, me_s))
+
+me = bpy.data.meshes.new("Trunk_Lid_Shut_Face")
+me.from_pydata([v[:] for v in lv], [], lf)
+me.materials.append(paint_mat)
+add(bpy.data.objects.new(me.name, me), lid)
+
+# gooseneck hinge arms under the front of the lid (they turn with it)
+for x in (-0.46, 0.46):
+    t = lid_top(x, 2.02)
+    zt = (t.z if t is not None else 1.12) - 0.03
+    for k, (y0, z0, y1, z1) in enumerate(((2.06, zt, 1.97, zt - 0.015), (1.97, zt - 0.015, 1.915, zt - 0.06))):
+        ob = strap(f"Trunk_Hinge_{'L' if x > 0 else 'R'}_{k}", (x, y0, z0), (x, y1, z1), 0.025, steel,
+                   thick=0.008, face=Vector((1, 0, 0)))
+        ob.parent = lid
+        ob.matrix_parent_inverse = lid.matrix_world.inverted()
+
 # Trunk opening surround. With the lid up, the source body is open to the lamp cavities: a painted
 # gutter runs along each side of the opening under the lid edge, and dark lamp-housing backs close
 # the lower corners behind the lid.
@@ -708,6 +1062,13 @@ for s_, tag in ((1, "L"), (-1, "R")):
     n_ = len(left)
     faces = [(i, n_ + i, n_ + i + 1, i + 1) if s_ > 0 else (i, i + 1, n_ + i + 1, n_ + i) for i in range(n_ - 1)]
     sheet(f"Trunk_Lamp_Housing_Back_{tag}", pts, faces, black_plastic, 0.006)
+# rear sill under the lid's bottom edge and the front jamb under the rear window, each with a seal
+box("Trunk_Rear_Sill", (1.10, 0.09, 0.008), (0, 2.285, 0.668), paint, bevel=0.002)
+box("Trunk_Rear_Seal", (1.08, 0.018, 0.018), (0, 2.30, 0.68), rubber, bevel=0.006)
+fz = lid_bvh.ray_cast(Vector((0, 1.93, 0.9)), Z, 0.5)[0]
+fz = (fz.z if fz is not None else 1.10) - 0.03
+box("Trunk_Front_Jamb", (1.20, 0.08, 0.008), (0, 1.90, fz), paint, bevel=0.002)
+box("Trunk_Front_Seal", (1.18, 0.018, 0.018), (0, 1.925, fz + 0.01), rubber, bevel=0.006)
 bm_body.free()
 bm_lid.free()
 
@@ -738,6 +1099,7 @@ for a in np.linspace(0, 2 * math.pi, 96, endpoint=False):
     hit = min(hits, key=lambda h: (h - centre).length)
     p = centre + d * ((hit - centre).length - 0.012)
     p.z = max(p.z, FLOOR_Z + 0.002)
+    p.x = max(-0.775, min(0.775, p.x))    # never past the door cards (below them the ray reaches the skin)
     p.y = PY
     contour.append(p)
 

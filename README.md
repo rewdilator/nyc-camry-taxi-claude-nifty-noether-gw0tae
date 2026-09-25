@@ -83,8 +83,12 @@ door glass, up the A-pillar. At the back, it follows the quarter-window slope.
 - **Trunk lid:** the lid is a shell. Its top skin runs from the hinge line back. Its rear face
   carries the lid lamps, the CEMEL badge and the plate, down to the plate area. The panels under
   the body-side tail lamps stay on the body.
-- **Around the trunk opening:** an inner panel closes the lid from the inside. Painted gutters and
-  lamp-housing backs close the opening, so nothing is torn or open when the lid is up.
+- **Around the trunk opening:** an inner panel and painted shut faces close the lid from the inside.
+  Gooseneck hinge arms turn with the lid. On the body there are painted gutters, lamp-housing backs,
+  a rear sill and a front jamb, each with a black weatherstrip.
+- **Shut faces and jambs:** every door edge has a painted shut face, running from the door card out
+  to the skin, so an open door reads as a closed steel shell. The body has a painted jamb with a black
+  rubber seal at each hinge and closing edge. The hinges sit on the hinge line.
 
 **NYC taxi livery.**
 - Body paint: NYC taxi yellow (sRGB 247/181/0) with a glossy clear coat.
@@ -106,8 +110,14 @@ rebuilds it like a real NYC yellow cab:
 - **Floor:** the tub is lowered to footwell height (0.33 m), with raised sills. A carpeted toe
   board and kick panels close the space under the dash. There are pedals (accelerator, brake and
   footrest) and black rubber floor mats.
-- **Seats:** seat bases on steel rails, cushions with side bolsters, and a rear bench on its own
-  base.
+- **Seats:** the source's low-poly seat backs are replaced.
+  - **Front seats:** base on steel rails, side shield and recline lever, cushions with bolsters, and a
+    reclined backrest with side bolsters and a fabric centre insert. The head restraint sits on two
+    chrome posts.
+  - **Rear bench:** three seat contours, bolsters, a fold-down centre armrest with pull tab, three head
+    restraints and child-seat anchor tags.
+- **Steering wheel:** the source's oversized wheel is replaced by a 375 mm leather rim with three
+  spokes, an airbag hub with badge and spoke buttons, a column shroud and two stalks.
 - **Seat belts:** front belts hang stowed from D-rings on the B-pillars, with buckles on the
   console side. The rear belts come out of the parcel shelf, and the rear buckles sit in the bench.
   There's also a centre console with an armrest and a shifter.
@@ -124,7 +134,8 @@ rebuilds it like a real NYC yellow cab:
   - an 8 in touchscreen in the centre, with the vents below it
   - air vents with slats at both ends of the dash
   - a climate control panel and a start button
-- **Console:** cup holders in the centre console, behind the shifter.
+- **Console and floor:** cup holders in the centre console, behind the shifter. Charcoal carpet, sill
+  scuff plates with a chrome insert, and parcel-shelf speakers with the high-mount brake light.
 - **Roof:**
   - a grey fabric headliner and sun visors (the passenger's has a vanity mirror)
   - an overhead console with map lamps, and a dome lamp over the rear seat
@@ -163,7 +174,8 @@ NYC_Taxi_Cemel_2020 (collection)
 ├── Taxi_Livery    Decal_Logo_*, Decal_RateOfFare_*, Decal_Medallion_*
 ├── Roof_Topper    Topper_Housing, Topper_Ad_L/R, Topper_MedallionLight_*, rack bars, feet, posts
 ├── License_Plates Plate_Front/Rear + brackets
-└── Taxi_Interior  Floor_*, Pedal_*, Seat_*, Console_*, Dash_*, Roof_*, Door_*_Door_Card (+ armrest,
+└── Taxi_Interior  Floor_*, Pedal_*, Seat_*, Steering_*, Console_*, Dash_*, Roof_*, Sill_*, Parcel_*,
+                   Body_Jamb_* / Body_Seal_*, Door_*_Shut_Face, Door_*_Hinge_*, Door_*_Door_Card (+ armrest,
                    handle, switches, speaker, pocket; parented to the doors), Partition_* (panels,
                    frame, Taxi TV, card reader, notices), Taximeter_*, Driver_Monitor_*, Trunk_*
 Studio (collection) Camera, Sun, Ground, plus the sky world. Delete it if you don't need it.
