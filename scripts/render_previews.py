@@ -53,6 +53,15 @@ light.visible_glossy = False          # a preview fill light, not something to s
 light.visible_transmission = False
 light.hide_render = True
 sc.collection.objects.link(light)
+# a second soft fill over the front seats, standing in for daylight through the windscreen
+front_fill = light.copy()
+front_fill.data = light.data.copy()
+front_fill.name = front_fill.data.name = "CabinLightFront"
+front_fill.location = (0, -0.45, 1.26)
+front_fill.data.energy, front_fill.data.size = 10, 0.6
+sc.collection.objects.link(front_fill)
+bg = sc.world.node_tree.nodes["Background"].inputs["Strength"]
+bg_day = bg.default_value
 OPENINGS = [o for o in bpy.data.objects if "open" in o.keys()]
 lens, clip = cam.data.lens, cam.data.clip_start
 for name in views:
@@ -61,7 +70,10 @@ for name in views:
         o["open"] = 1.0 if name.endswith("_open") else 0.0
     light.hide_render = v not in INTERIOR and v != "trunk"
     light.location = (0, 1.85, 1.25) if v == "trunk" else (0, 0.75, 1.24)
-    light.data.energy = 40 if v == "trunk" else 10
+    light.data.energy = 40 if v == "trunk" else 13
+    front_fill.hide_render = v not in INTERIOR
+    # inside the car, the sky only reaches the cabin through tinted glass: brighten it for the shot
+    bg.default_value = bg_day * (1.8 if v in INTERIOR else 1.0)
     if v in INTERIOR:
         loc, t, cam.data.lens = INTERIOR[v]
         cam.data.clip_start = 0.03

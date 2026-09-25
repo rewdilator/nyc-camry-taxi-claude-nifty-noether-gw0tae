@@ -81,7 +81,9 @@ def load_image(fname):
 
 
 def material(name, color=(0.8, 0.8, 0.8, 1), rough=0.5, metal=0.0, image=None, emission=0.0,
-             alpha=False, transmission=0.0, ior=1.5, coat=0.0, sheen=0.0):
+             alpha=False, transmission=0.0, ior=1.5, coat=0.0, sheen=0.0, grain=None):
+    """Principled material; `grain` = (scale, strength) adds a fine procedural surface texture (the
+    weave of seat cloth and headliner, the stipple on moulded plastic)."""
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
@@ -109,12 +111,23 @@ def material(name, color=(0.8, 0.8, 0.8, 1), rough=0.5, metal=0.0, image=None, e
         if emission:
             nt.links.new(t.outputs["Color"], b.inputs["Emission Color"])
     b.inputs["Emission Strength"].default_value = emission
+    if grain:
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        noise = nt.nodes.new("ShaderNodeTexNoise")
+        noise.inputs["Scale"].default_value = grain[0]
+        noise.inputs["Detail"].default_value = 6.0
+        bump = nt.nodes.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = grain[1]
+        bump.inputs["Distance"].default_value = 0.0005
+        nt.links.new(tc.outputs["Object"], noise.inputs["Vector"])
+        nt.links.new(noise.outputs["Fac"], bump.inputs["Height"])
+        nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
     return m
 
 
-cloth = material("Interior_Black_Cloth", (0.016, 0.016, 0.018, 1), rough=0.92)
-trim = material("Interior_Black_Trim", (0.02, 0.02, 0.022, 1), rough=0.6)
-abs_black = material("Partition_Black_Panel", (0.012, 0.012, 0.013, 1), rough=0.5)
+cloth = material("Interior_Black_Cloth", (0.034, 0.034, 0.037, 1), rough=0.9, sheen=0.4, grain=(900, 0.35))
+trim = material("Interior_Black_Trim", (0.036, 0.036, 0.039, 1), rough=0.55, grain=(1400, 0.15))
+abs_black = material("Partition_Black_Panel", (0.025, 0.025, 0.027, 1), rough=0.45, grain=(1400, 0.12))
 frame_mat = material("Partition_Frame_Black_Aluminium", (0.03, 0.03, 0.032, 1), rough=0.35, metal=1.0)
 poly = material("Partition_Polycarbonate", (0.95, 0.97, 0.98, 1), rough=0.03, transmission=1.0,
                 ior=1.58)
@@ -307,8 +320,8 @@ def device(name, center, size, normal, housing_mat, face_mat, face_wh, face_shif
 # ---------------------------------------------------------------------------
 # 3. Floor, pedals, seats, belts and console
 # ---------------------------------------------------------------------------
-carpet = material("Interior_Carpet_Charcoal", (0.05, 0.05, 0.053, 1), rough=1.0)
-rubber = material("Interior_Rubber_Mat", (0.008, 0.008, 0.009, 1), rough=0.75)
+carpet = material("Interior_Carpet_Charcoal", (0.05, 0.05, 0.053, 1), rough=1.0, sheen=0.5, grain=(600, 0.6))
+rubber = material("Interior_Rubber_Mat", (0.02, 0.02, 0.021, 1), rough=0.75)
 webbing = material("Interior_Seat_Belt_Webbing", (0.014, 0.014, 0.016, 1), rough=0.7)
 steel = material("Interior_Dark_Steel", (0.05, 0.05, 0.055, 1), rough=0.4, metal=1.0)
 
@@ -404,8 +417,9 @@ for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckl
 # ---------------------------------------------------------------------------
 # 3d. Seat backs, head restraints, steering wheel (replacing the source's low-poly ones)
 # ---------------------------------------------------------------------------
-insert_mat = material("Interior_Seat_Insert", (0.028, 0.028, 0.032, 1), rough=0.95)
-leather = material("Interior_Wheel_Leather", (0.018, 0.018, 0.019, 1), rough=0.45)
+insert_mat = material("Interior_Seat_Insert", (0.052, 0.052, 0.056, 1), rough=0.95, sheen=0.5, grain=(700, 0.5))
+leather = material("Interior_Wheel_Leather", (0.03, 0.03, 0.031, 1), rough=0.5, grain=(1800, 0.25))
+accent = material("Interior_Dash_Accent_Satin", (0.32, 0.32, 0.33, 1), rough=0.32, metal=1.0, grain=(2500, 0.08))
 
 
 def tilted(name, size, pivot, local, tilt, mat, bevel=0.0, segments=3, subsurf=0):
@@ -486,7 +500,7 @@ for x, tag in ((0.60, "L"), (0.0, "C"), (-0.60, "R")):
 WC = Vector((0.375, -0.485, 0.895))
 W_TILT = math.radians(24)                   # top of the wheel leans forward
 WM = Matrix.Translation(WC) @ Matrix.Rotation(W_TILT, 4, "X")
-R_RIM, r_rim = 0.1875, 0.0165
+R_RIM, r_rim, r_rim_y = 0.1875, 0.0155, 0.0185     # rim section is oval, deeper than it is wide
 bm = bmesh.new()
 nu, nv = 48, 12
 ring = []
@@ -496,7 +510,7 @@ for i in range(nu):
     for j in range(nv):
         b = 2 * math.pi * j / nv
         rr = R_RIM + r_rim * math.cos(b)
-        row.append(bm.verts.new((rr * math.cos(a), r_rim * math.sin(b), rr * math.sin(a))))
+        row.append(bm.verts.new((rr * math.cos(a), r_rim_y * math.sin(b), rr * math.sin(a))))
     ring.append(row)
 for i in range(nu):
     for j in range(nv):
@@ -516,15 +530,74 @@ def wheel_part(name, size, local, mat, bevel=0.0, segments=3, rot_y=0.0):
     return ob
 
 
-wheel_part("Steering_Wheel_Hub", (0.15, 0.06, 0.12), (0, 0.012, -0.005), leather, bevel=0.03, segments=4)
-wheel_part("Steering_Wheel_Badge", (0.045, 0.004, 0.03), (0, -0.02, 0.005), chrome, bevel=0.012, segments=4)
+def wheel_slab(name, outline, y0, y1, mat, bevel=0.006, smooth=True):
+    """A flat moulding in the wheel plane: `outline` (x, z) extruded from local y0 to y1 (toward the
+    driver), edges rounded."""
+    bm_ = bmesh.new()
+    back = [bm_.verts.new((x, y0, z)) for x, z in outline]
+    front = [bm_.verts.new((x, y1, z)) for x, z in outline]
+    n_ = len(outline)
+    bm_.faces.new(back[::-1])
+    bm_.faces.new(front)
+    for k in range(n_):
+        bm_.faces.new((back[k], back[(k + 1) % n_], front[(k + 1) % n_], front[k]))
+    bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces)
+    me_ = bpy.data.meshes.new(name)
+    bm_.to_mesh(me_)
+    bm_.free()
+    me_.materials.append(mat)
+    ob = bpy.data.objects.new(name, me_)
+    if bevel:
+        mod = ob.modifiers.new("Bevel", "BEVEL")
+        mod.width, mod.segments, mod.limit_method = bevel, 3, "ANGLE"
+    if smooth:
+        me_.shade_smooth()
+    add(ob)
+    ob.matrix_world = WM
+    return ob
+
+
+def rounded(poly, r=0.012, n=4):
+    """Round the corners of a convex polygon (x, z) with arcs of radius r."""
+    out = []
+    m_ = len(poly)
+    for k in range(m_):
+        p0, p1, p2 = (Vector((*poly[k - 1], 0)), Vector((*poly[k], 0)), Vector((*poly[(k + 1) % m_], 0)))
+        a_ = (p0 - p1).normalized()
+        b_ = (p2 - p1).normalized()
+        s0, s1 = p1 + a_ * r, p1 + b_ * r
+        for t in np.linspace(0, 1, n).tolist():
+            q = (1 - t) ** 2 * s0 + 2 * (1 - t) * t * p1 + t ** 2 * s1     # quadratic corner
+            out.append((q.x, q.y))
+    return out
+
+
+# airbag pad: a rounded trapezoid, wider at the top, with the badge in the middle
+PAD = [(-0.080, 0.050), (0.080, 0.050), (0.060, -0.068), (-0.060, -0.068)]
+wheel_slab("Steering_Wheel_Hub", rounded(PAD, 0.022, 6), -0.015, 0.042, leather, bevel=0.012)
+wheel_part("Steering_Wheel_Badge", (0.045, 0.004, 0.03), (0, 0.043, 0.0), chrome, bevel=0.012, segments=4)
 for side in (-1, 1):
-    wheel_part(f"Steering_Wheel_Spoke_{'L' if side > 0 else 'R'}", (0.11, 0.022, 0.05),
-               (side * 0.125, 0.012, -0.01), trim, bevel=0.01)
-    for k in range(3):
-        wheel_part(f"Steering_Wheel_Button_{'L' if side > 0 else 'R'}_{k}", (0.016, 0.006, 0.012),
-                   (side * (0.10 + 0.022 * (k % 2)), -0.001, 0.008 - 0.018 * (k // 2)), black_plastic, bevel=0.003)
-wheel_part("Steering_Wheel_Spoke_Lower", (0.05, 0.022, 0.12), (0, 0.012, -0.12), trim, bevel=0.01)
+    tag = "L" if side > 0 else "R"
+    # side spoke: tapers from the pad out to the rim, carrying the switch panel
+    wheel_slab(f"Steering_Wheel_Spoke_{tag}", rounded([(side * 0.074, 0.030), (side * 0.182, 0.014),
+                                                      (side * 0.182, -0.030), (side * 0.070, -0.048)][::side], 0.008),
+               -0.010, 0.020, trim, bevel=0.005)
+    panel = [(side * 0.086, 0.022), (side * 0.150, 0.014), (side * 0.150, -0.024), (side * 0.084, -0.036)]
+    wheel_slab(f"Steering_Wheel_Switch_Panel_{tag}", rounded(panel[::side], 0.006), 0.020, 0.024, black_plastic,
+               bevel=0.002)
+    for k in range(4):
+        wheel_part(f"Steering_Wheel_Button_{tag}_{k}", (0.018, 0.005, 0.013),
+                   (side * (0.102 + 0.026 * (k % 2)), 0.026, 0.006 - 0.022 * (k // 2)), trim, bevel=0.003)
+    # satin trim along the lower edge of the spoke
+    wheel_slab(f"Steering_Wheel_Spoke_Trim_{tag}", [(side * 0.074, -0.046), (side * 0.180, -0.028),
+                                                    (side * 0.180, -0.034), (side * 0.072, -0.053)][::side],
+               -0.004, 0.021, accent, bevel=0.0015)
+    # split lower spoke: two legs from the pad down to the bottom of the rim
+    wheel_slab(f"Steering_Wheel_Spoke_Lower_{tag}", [(side * 0.022, -0.064), (side * 0.048, -0.064),
+                                                    (side * 0.050, -0.180), (side * 0.020, -0.182)][::side],
+               -0.010, 0.016, trim, bevel=0.005)
+wheel_slab("Steering_Wheel_Lower_Accent", [(-0.020, -0.120), (0.020, -0.120), (0.022, -0.176), (-0.022, -0.176)],
+           -0.004, 0.010, accent, bevel=0.002)
 wheel_part("Steering_Column_Shroud", (0.12, 0.24, 0.10), (0, -0.15, -0.03), trim, bevel=0.025, segments=3)
 for side, tag in ((1, "Turn"), (-1, "Wiper")):
     st = cylinder(f"Steering_Stalk_{tag}", 0.007, 0.13, (0, 0, 0), black_plastic, 10)
@@ -558,7 +631,10 @@ if h is not None:
 box("Console_Base", (0.18, 0.86, 0.74 - FLOOR_Z), (0, -0.44, (0.74 + FLOOR_Z) / 2), trim, bevel=0.02)
 box("Console_Armrest", (0.19, 0.30, 0.05), (0, -0.10, SEAT_Z + 0.185), cloth, bevel=0.018, segments=4)
 box("Console_Shifter_Boot", (0.07, 0.10, 0.04), (0, -0.50, SEAT_Z + 0.18), trim, bevel=0.015)
-box("Console_Shifter_Knob", (0.04, 0.05, 0.10), (0, -0.50, SEAT_Z + 0.24), trim, bevel=0.018, segments=4)
+box("Console_Shift_Gate_Plate", (0.085, 0.16, 0.004), (0, -0.50, SEAT_Z + 0.202), accent, bevel=0.003)
+cylinder("Console_Shifter_Stem", 0.009, 0.06, (0, -0.51, SEAT_Z + 0.23), black_plastic, 12)
+box("Console_Shifter_Knob", (0.042, 0.056, 0.075), (0, -0.515, SEAT_Z + 0.285), leather, bevel=0.019, segments=5)
+box("Console_Shifter_Knob_Trim", (0.044, 0.058, 0.006), (0, -0.515, SEAT_Z + 0.256), accent, bevel=0.0025)
 
 # ---------------------------------------------------------------------------
 # 3a. Dash, console and roof details (the source dash is a bare black shell)
@@ -600,6 +676,15 @@ cz = 0.775
 quad("Dash_Climate_Panel", (-0.06, dash_face_y(-0.06, cz) + 0.004, cz), 0.20, 0.05, Vector((0, 1, 0.35)),
      climate_mat)
 box("Dash_Start_Button", (0.03, 0.012, 0.03), (0.16, dash_face_y(0.16, 0.80) + 0.004, 0.80), chrome, bevel=0.008)
+# satin-silver accent band across the passenger side of the dash, dropping into the centre stack
+band_x = np.linspace(-0.70, -0.20, 26)
+band = []
+for x in band_x:
+    zc = 0.885 if x < -0.30 else 0.885 - (x + 0.30) * 0.35
+    band.append([Vector((x, dash_face_y(x, z) + 0.003, z)) for z in (zc - 0.012, zc + 0.012)])
+verts = [p for pair in band for p in pair]
+faces = [(2 * i, 2 * i + 2, 2 * i + 3, 2 * i + 1) for i in range(len(band) - 1)]
+sheet("Dash_Accent_Band", verts, faces, accent, 0.002).data.shade_smooth()
 # cup holders between the shifter and the armrest
 for x in (-0.045, 0.045):
     cylinder(f"Console_Cup_Holder_{'L' if x > 0 else 'R'}", 0.038, 0.004, (x, -0.33, 0.742), black_plastic)
@@ -612,7 +697,7 @@ def roof_z(x, y):
 
 
 # fabric headliner over the source roof lining (a near-white atlas swatch that blows out in renders)
-headliner = material("Interior_Headliner_Fabric", (0.30, 0.30, 0.29, 1), rough=0.95)
+headliner = material("Interior_Headliner_Fabric", (0.42, 0.41, 0.39, 1), rough=0.95, sheen=0.4, grain=(800, 0.3))
 xs = np.linspace(-0.66, 0.66, 27)
 ys = np.linspace(-0.40, 1.30, 35)
 hl = {}
@@ -668,7 +753,7 @@ for sgn_, y in ((-1, -0.05), (1, 0.70), (-1, 0.70)):
 # gets a real card: a moulded panel following the door's inner skin, a window-sill ledge up to the
 # glass, a cloth insert, armrest with pull cup, chrome interior handle, window switches, speaker grille,
 # map pocket and a courtesy reflector. All of it is parented to the door and swings with it.
-card_mat = material("Interior_Door_Card", (0.028, 0.028, 0.03, 1), rough=0.55)
+card_mat = material("Interior_Door_Card", (0.04, 0.04, 0.043, 1), rough=0.55, grain=(1400, 0.15))
 reflector = material("Interior_Door_Reflector", (0.35, 0.01, 0.01, 1), rough=0.3)
 CARD_OFF = 0.065          # card surface this far inside the outer skin
 cards = []
@@ -1039,10 +1124,14 @@ lid_bvh = BVHTree.FromBMesh(bm_lid)
 for s_, tag in ((1, "L"), (-1, "R")):
     inner, outer = [], []
     for y in np.linspace(1.95, 2.28, 12):
-        top = lid_bvh.ray_cast(Vector((s_ * 0.60, y, 0.80)), Z, 0.6)[0]
-        zg = (top.z if top is not None else 1.0) - 0.035
-        hit = body_bvh.ray_cast(Vector((s_ * 0.45, y, zg)), Vector((s_, 0, 0)), 0.35)[0]
-        xo = min(abs(hit.x) - 0.004, 0.76) if hit is not None else 0.70
+        # the gutter tucks under the inboard edge of the quarter panel, at the bottom of the groove
+        # that forms the shut line, so it can't show with the lid down
+        xo, zg = 0.70, 0.97
+        for x in np.arange(0.60, 0.72, 0.003):
+            hit = body_bvh.ray_cast(Vector((s_ * x, y, 1.4)), -Z, 0.6)[0]
+            if hit is not None and hit.z > 0.9:
+                xo, zg = x + 0.004, hit.z - 0.014
+                break
         inner.append((s_ * (TX - 0.005), y, zg))
         outer.append((s_ * xo, y, zg))
     pts = inner + outer
@@ -1055,13 +1144,65 @@ for s_, tag in ((1, "L"), (-1, "R")):
     left, right = [], []
     for z in zs_:
         hit = body_bvh.ray_cast(Vector((s_ * 0.40, yb, z)), Vector((s_, 0, 0)), 0.40)[0]
-        xo = min(abs(hit.x) - 0.004, 0.76) if hit is not None else 0.72
+        xo = min(abs(hit.x) - 0.006, 0.665) if hit is not None else 0.66
         left.append((s_ * (TX - 0.005), yb, z))
         right.append((s_ * xo, yb, z))
     pts = left + right
     n_ = len(left)
     faces = [(i, n_ + i, n_ + i + 1, i + 1) if s_ > 0 else (i, i + 1, n_ + i + 1, n_ + i) for i in range(n_ - 1)]
     sheet(f"Trunk_Lamp_Housing_Back_{tag}", pts, faces, black_plastic, 0.006)
+# Tail lamp end caps. The lid carries the inner lamps and the quarter panels the outer ones; the
+# source modelled each pair as one lamp, so both halves are open where they meet. Each gets a dark
+# housing wall there: the convex outline of the lamp's cross-section just inside the split.
+LAMP_SPLIT = 0.625
+
+
+def section_yz(bms, x, y_min):
+    pts = []
+    for bm_ in bms:
+        for e in bm_.edges:
+            a, b = e.verts[0].co, e.verts[1].co
+            if (a.x - x) * (b.x - x) >= 0:
+                continue
+            p = a.lerp(b, (x - a.x) / (b.x - a.x))
+            if p.y >= y_min and 0.815 <= p.z <= 0.985:
+                pts.append((p.y, p.z))
+    return pts
+
+
+def hull2d(pts):
+    pts = sorted(set(pts))
+    if len(pts) < 3:
+        return pts
+
+    def half(seq):
+        h = []
+        for p in seq:
+            while len(h) >= 2 and ((h[-1][0] - h[-2][0]) * (p[1] - h[-2][1]) -
+                                   (h[-1][1] - h[-2][1]) * (p[0] - h[-2][0])) <= 0:
+                h.pop()
+            h.append(p)
+        return h
+    return half(pts)[:-1] + half(pts[::-1])[:-1]
+
+
+bm_lamps = bmesh.new()
+for n in ("Cemel_Trim_Interior", "Cemel_Glass_Lamps", "Cemel_Lamp_Lenses", "Cemel_Wheels_Chassis"):
+    bm_lamps.from_mesh(bpy.data.objects[n].data)
+for s_, tag in ((1, "L"), (-1, "R")):
+    for owner, x_cut, x_cap, y_min, parent in (("Lid", LAMP_SPLIT - 0.006, LAMP_SPLIT - 0.003, 2.24, lid),
+                                               ("Body", LAMP_SPLIT + 0.006, LAMP_SPLIT + 0.003, 2.15, None)):
+        bm_src = bm_lid if owner == "Lid" else bm_lamps
+        outline = hull2d(section_yz([bm_src], s_ * x_cut, y_min))
+        if len(outline) < 3:
+            continue
+        cy = sum(p[0] for p in outline) / len(outline)
+        cz = sum(p[1] for p in outline) / len(outline)
+        pts = [(s_ * x_cap, cy + (y - cy) * 0.97, cz + (z - cz) * 0.97) for y, z in outline]
+        sheet(f"Tail_Lamp_End_Cap_{owner}_{tag}", pts, [tuple(range(len(pts)))], black_plastic, 0.004,
+              parent=parent)
+bm_lamps.free()
+
 # rear sill under the lid's bottom edge and the front jamb under the rear window, each with a seal
 box("Trunk_Rear_Sill", (1.10, 0.09, 0.008), (0, 2.285, 0.668), paint, bevel=0.002)
 box("Trunk_Rear_Seal", (1.08, 0.018, 0.018), (0, 2.30, 0.68), rubber, bevel=0.006)

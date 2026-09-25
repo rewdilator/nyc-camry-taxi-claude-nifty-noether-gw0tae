@@ -233,12 +233,62 @@ def cut_planes():
     return planes
 
 
+def adopt_lid_flanks(comps, owners):
+    """The paint shell models the lid's shut line as a groove, with the lid panels on one side and
+    the quarter panels on the other. The lid's curved side flanks reach into the groove, past the
+    lid's nominal width, so the width test leaves them on the body. Any paint panel on the rear deck
+    that is stitched mostly to lid panels (and hardly to the body's) is part of the lid."""
+    def rim(comp):
+        return np.array([v.co[:] for v in comp if v.is_boundary]).reshape(-1, 3)
+    lid_rim = np.concatenate([rim(c) for c, o in zip(comps, owners) if o == "Trunk"])
+    for i, (comp, owner) in enumerate(zip(comps, owners)):
+        co = np.array([v.co[:] for v in comp])
+        mn, mx = co.min(0), co.max(0)
+        if owner or mn[0] < -0.72 or mx[0] > 0.72 or mn[1] < TRUNK["y"][0] or mn[2] < 0.95:
+            continue
+        r = rim(comp)
+        if not len(r):
+            continue
+        d_lid = np.array([np.abs(lid_rim - p).sum(1).min() for p in r])
+        if (d_lid < 0.003).mean() > 0.3:
+            owners[i] = "Trunk"
+            print("lid flank adopted: x %.3f..%.3f y %.3f..%.3f" % (mn[0], mx[0], mn[1], mx[1]))
+
+
+LAMP_SPLIT = 0.625       # |x| where the lid's inner tail lamps meet the quarter panels' outer ones
+LAMP_BACK = 2.20         # lamp housing further forward than this is inside the trunk, on the body
+LAMP_CUT = 96
+
+
+def lamp_zone(mn, mx):
+    """Tail lamp glass, lenses, bulbs and housings on one side of the car."""
+    ax0, ax1 = (mn[0], mx[0]) if mn[0] > 0 else (-mx[0], -mn[0])
+    return ax0 > 0.2 and mx[1] > 2.1 and mn[1] > 1.7 and mn[2] > 0.78 and mx[2] < 1.0
+
+
+def lamp_side(src_name, co):
+    """"lid", "body" or "delete" for a lamp part, or "cut" for a housing running through both lamps. The
+    source already splits the lamp glass and lenses where the lid meets the quarter panel, so those
+    go whole (by where most of the part is); only the housings behind them are cut."""
+    ax = np.abs(co[:, 0])
+    if ax.min() >= LAMP_SPLIT - 0.03:
+        return "body"
+    if ax.max() <= LAMP_SPLIT + 0.01:
+        if co[:, 1].min() >= LAMP_BACK:
+            return "lid"
+        if co[:, 1].max() < LAMP_BACK and src_name not in ("Cemel_Glass_Lamps", "Cemel_Lamp_Lenses"):
+            return "delete"
+    if src_name in ("Cemel_Glass_Lamps", "Cemel_Lamp_Lenses"):
+        return "lid" if np.median(ax) < LAMP_SPLIT and co[:, 1].min() >= LAMP_BACK else "body"
+    return "cut"
+
+
 CODE = {o: i + 1 for i, o in enumerate(OWNERS)}      # 0 = stays on the body
 CANDIDATE = 99
 DELETE = 97
 SILL_Z = 0.97             # door trim below the window sill is rebuilt as a proper door card
-B_PILLAR = (0.12, 0.27)
-BELT_TOP = 1.06           # the sill garnish along the door's belt line goes too (the card has its own)   # inner B-pillar trim between the doors stays on the body
+B_PILLAR = (0.12, 0.27)   # inner B-pillar trim between the doors stays on the body
+BELT_TOP = 1.06           # the sill garnish along the door's belt line goes too (the card has its own)
 report = {}
 for src_name in SOURCES:
     src = bpy.data.objects[src_name]
@@ -246,14 +296,28 @@ for src_name in SOURCES:
     bm.from_mesh(src.data)
     tag = bm.faces.layers.int.new("opening")
     cand_faces = set()
-    for comp in loose_parts(bm):
+    comps = loose_parts(bm)
+    owners = [part_owner(np.array([v.co[:] for v in comp])) for comp in comps]
+    if src_name == "Cemel_Body_Paint":
+        adopt_lid_flanks(comps, owners)
+    lamp_faces = set()
+    for comp, owner in zip(comps, owners):
         co = np.array([v.co[:] for v in comp])
         mn, mx = co.min(0), co.max(0)
         faces = {f for v in comp for f in v.link_faces}
-        owner = part_owner(co)
         if owner and owner != "Trunk" and src_name == "Cemel_Trim_Interior" and mx[2] < SILL_Z:
             for f in faces:
                 f[tag] = DELETE          # original door-card pieces: replaced by a door card
+        elif src_name != "Cemel_Body_Paint" and lamp_zone(mn, mx):
+            # tail lamps: the lid carries the inner lamps, the quarter panels the outer ones
+            side = lamp_side(src_name, co)
+            if side == "cut":
+                for f in faces:
+                    f[tag] = LAMP_CUT
+                lamp_faces |= faces
+            else:
+                for f in faces:
+                    f[tag] = {"lid": CODE["Trunk"], "delete": DELETE}.get(side, 0)
         elif owner:
             for f in faces:
                 f[tag] = CODE[owner]
@@ -280,6 +344,19 @@ for src_name in SOURCES:
                     f[tag] = DELETE if (c.z < SILL_Z or belt) and not in_b_pillar else 0
                 else:
                     f[tag] = CODE[o] if o else 0
+    if lamp_faces:
+        geom = list(lamp_faces) + list({e for f in lamp_faces for e in f.edges}) + \
+            list({v for f in lamp_faces for v in f.verts})
+        for co_, no_ in [((LAMP_SPLIT, 0, 0), (1, 0, 0)), ((-LAMP_SPLIT, 0, 0), (1, 0, 0)),
+                         ((0, LAMP_BACK, 0), (0, 1, 0))]:
+            res = bmesh.ops.bisect_plane(bm, geom=geom, plane_co=co_, plane_no=no_, dist=1e-5)
+            geom = [g for g in res["geom"] if g.is_valid]
+        for f in bm.faces:
+            if f[tag] == LAMP_CUT:
+                c = f.calc_center_median()
+                # behind the lid's lamps, the housings' forward flanges would stick into the trunk
+                # opening as shelves; the trunk trim built in build_interior.py covers that corner
+                f[tag] = 0 if abs(c.x) >= LAMP_SPLIT else CODE["Trunk"] if c.y > LAMP_BACK else DELETE
     counts = {o: sum(1 for f in bm.faces if f[tag] == CODE[o]) for o in OWNERS}
     report[src_name] = counts
     bm.to_mesh(src.data)

@@ -81,11 +81,20 @@ door glass, up the A-pillar. At the back, it follows the quarter-window slope.
 - **Wheels:** wheel, tyre and wheel-arch parts are never taken.
 - **Hinges:** each hinge line runs 2 cm behind the door's leading edge, on the outer skin.
 - **Trunk lid:** the lid is a shell. Its top skin runs from the hinge line back. Its rear face
-  carries the lid lamps, the CEMEL badge and the plate, down to the plate area. The panels under
-  the body-side tail lamps stay on the body.
+  carries the CEMEL badge and the plate, down to the plate area. The panels under the body-side
+  tail lamps stay on the body.
+  - **Shut line:** the source paint models the lid's shut line as a groove. The lid's curved side
+    flanks reach into that groove, so they go with the lid, and the lid's edge is the groove's.
+    With the lid shut, the line looks the same as in the source.
+  - **Tail lamps:** as on the real car, each tail lamp is in two parts. The inner lamp is on the
+    lid and the outer lamp on the quarter panel. The source splits the lamp glass and lenses there
+    already. The black housings behind them run through both, so they're cut at the split, and the
+    housing flanges that reached into the trunk opening are removed. A dark end cap closes each
+    half where the two meet.
 - **Around the trunk opening:** an inner panel and painted shut faces close the lid from the inside.
-  Gooseneck hinge arms turn with the lid. On the body there are painted gutters, lamp-housing backs,
-  a rear sill and a front jamb, each with a black weatherstrip.
+  Gooseneck hinge arms turn with the lid. On the body there are painted gutters tucked under the
+  quarter panels' edges, lamp-housing backs, a rear sill and a front jamb, each with a black
+  weatherstrip.
 - **Shut faces and jambs:** every door edge has a painted shut face, running from the door card out
   to the skin, so an open door reads as a closed steel shell. The body has a painted jamb with a black
   rubber seal at each hinge and closing edge. The hinges sit on the hinge line.
@@ -116,11 +125,16 @@ rebuilds it like a real NYC yellow cab:
     chrome posts.
   - **Rear bench:** three seat contours, bolsters, a fold-down centre armrest with pull tab, three head
     restraints and child-seat anchor tags.
-- **Steering wheel:** the source's oversized wheel is replaced by a 375 mm leather rim with three
-  spokes, an airbag hub with badge and spoke buttons, a column shroud and two stalks.
+- **Steering wheel:** the source's oversized wheel is replaced by a 375 mm leather rim (oval
+  section) with:
+  - a rounded trapezoid airbag pad with a badge
+  - tapered side spokes with switch panels and satin-silver trim
+  - a split lower spoke with a satin insert
+  - a column shroud and two stalks
 - **Seat belts:** front belts hang stowed from D-rings on the B-pillars, with buckles on the
   console side. The rear belts come out of the parcel shelf, and the rear buckles sit in the bench.
-  There's also a centre console with an armrest and a shifter.
+  There's also a centre console with an armrest, and a shifter with a satin gate plate and a
+  leather knob.
 - **Door cards:** every door has a moulded card that follows the door's inner skin, including the
   rear door's curve round the wheel arch. Each card has:
   - a window-sill ledge up to the glass and a cloth insert
@@ -134,10 +148,11 @@ rebuilds it like a real NYC yellow cab:
   - an 8 in touchscreen in the centre, with the vents below it
   - air vents with slats at both ends of the dash
   - a climate control panel and a start button
+  - a satin-silver accent band across the passenger side, dropping into the centre stack
 - **Console and floor:** cup holders in the centre console, behind the shifter. Charcoal carpet, sill
   scuff plates with a chrome insert, and parcel-shelf speakers with the high-mount brake light.
 - **Roof:**
-  - a grey fabric headliner and sun visors (the passenger's has a vanity mirror)
+  - a light "ash" grey fabric headliner and sun visors (the passenger's has a vanity mirror)
   - an overhead console with map lamps, and a dome lamp over the rear seat
   - grab handles above the three passenger doors
 - **Partition:** behind the front seats. Its outline is traced from the cabin's cross-section, so
@@ -155,9 +170,14 @@ rebuilds it like a real NYC yellow cab:
   Under the lid there's a carpeted liner and an inner panel, both moving with the lid. Painted
   gutters run along the sides of the opening.
 
+- **Materials:** black plastics, cloth and leather reflect 3–5 % of light, as the real ones do, not
+  1–2 %. Seat cloth, carpet and the headliner have a fine procedural weave and sheen. Moulded
+  plastics and the wheel leather have a fine grain.
+
 ![Taxi TV and card reader](renders/interior_taxi_tv.png)
 ![Taximeter and driver monitor](renders/interior_dashboard.png)
 ![Trunk open](renders/trunk_open.png)
+![Trunk lid part open: shut line and split tail lamps](renders/trunk_lid_part_open.png)
 
 The decals are separate meshes (`Decal_*`) projected onto the body with ray casts. They follow
 the panel curvature 1.8 mm above the paint, and each has its own simple 0–1 UVs. They export to
