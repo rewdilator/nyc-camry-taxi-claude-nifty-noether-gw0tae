@@ -251,7 +251,7 @@ def device(name, center, size, normal, housing_mat, face_mat, face_wh, face_shif
 # ---------------------------------------------------------------------------
 # 3. Floor, pedals, seats, belts and console
 # ---------------------------------------------------------------------------
-carpet = material("Interior_Carpet_Charcoal", (0.022, 0.022, 0.024, 1), rough=1.0)
+carpet = material("Interior_Carpet_Charcoal", (0.05, 0.05, 0.053, 1), rough=1.0)
 rubber = material("Interior_Rubber_Mat", (0.008, 0.008, 0.009, 1), rough=0.75)
 webbing = material("Interior_Seat_Belt_Webbing", (0.014, 0.014, 0.016, 1), rough=0.7)
 steel = material("Interior_Dark_Steel", (0.05, 0.05, 0.055, 1), rough=0.4, metal=1.0)

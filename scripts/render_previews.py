@@ -57,7 +57,9 @@ for name in views:
     v = name[:-5] if name.endswith("_open") else name
     for o in OPENINGS:
         o["open"] = 1.0 if name.endswith("_open") else 0.0
-    light.hide_render = v not in INTERIOR
+    light.hide_render = v not in INTERIOR and v != "trunk"
+    light.location = (0, 1.85, 1.25) if v == "trunk" else (0, 0.75, 1.38)
+    light.data.energy = 40 if v == "trunk" else 12
     if v in INTERIOR:
         loc, t, cam.data.lens = INTERIOR[v]
         cam.data.clip_start = 0.03
