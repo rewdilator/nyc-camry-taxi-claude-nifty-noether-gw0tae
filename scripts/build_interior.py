@@ -754,9 +754,27 @@ for sgn_, y in ((-1, -0.05), (1, 0.70), (-1, 0.70)):
 # glass, a cloth insert, armrest with pull cup, chrome interior handle, window switches, speaker grille,
 # map pocket and a courtesy reflector. All of it is parented to the door and swings with it.
 card_mat = material("Interior_Door_Card", (0.04, 0.04, 0.043, 1), rough=0.55, grain=(1400, 0.15))
+door_fabric = material("Interior_Door_Insert_Fabric", (0.085, 0.085, 0.088, 1), rough=0.95, sheen=0.5,
+                       grain=(800, 0.45))
 reflector = material("Interior_Door_Reflector", (0.35, 0.01, 0.01, 1), rough=0.3)
 CARD_OFF = 0.065          # card surface this far inside the outer skin
 cards = []
+
+
+def hull2d(pts):
+    pts = sorted(set(pts))
+    if len(pts) < 3:
+        return pts
+
+    def half(seq):
+        h = []
+        for p in seq:
+            while len(h) >= 2 and ((h[-1][0] - h[-2][0]) * (p[1] - h[-2][1]) -
+                                   (h[-1][1] - h[-2][1]) * (p[0] - h[-2][0])) <= 0:
+                h.pop()
+            h.append(p)
+        return h
+    return half(pts)[:-1] + half(pts[::-1])[:-1]
 
 
 def door_child(ob, door):
@@ -789,6 +807,8 @@ for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Doo
     bm_d.transform(door.matrix_world)
     d_bvh = BVHTree.FromBMesh(bm_d)
     dy = np.array([v.co.y for v in bm_d.verts if 0.40 < v.co.z < 0.90 and abs(v.co.x) > 0.78])
+    glass_idx = {i for i, m in enumerate(door.data.materials) if m and m.name == "Index_0_2"}
+    glass = np.array([v.co[:] for f in bm_d.faces if f.material_index in glass_idx for v in f.verts])
     bm_d.free()
     y_a, y_b = dy.min() + 0.05, dy.max() - 0.05
 
@@ -916,14 +936,45 @@ for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Doo
         cylinder(f"{door.name}_Hinge_{'Lower' if hz < 0.6 else 'Upper'}", 0.011, 0.07,
                  (hx - sgn * 0.004, hy + 0.004, hz), steel, segments=12)
 
-    # cloth insert across the middle of the card
+    # Window frame from inside: a black glass-run channel round the top and ends of the glass, as on
+    # a real door, where the frame is a moulded channel rather than just the outer chrome strip.
+    glass = glass[(np.abs(glass[:, 0]) < 0.82) & (glass[:, 2] > 0.95)] if len(glass) else glass
+    if len(glass) > 3:
+        outline = hull2d([(round(p_[1], 4), round(p_[2], 4)) for p_ in glass])
+        cy_, cz_ = np.mean([p_[0] for p_ in outline]), np.mean([p_[1] for p_ in outline])
+        loop = []
+        for y_, z_ in outline:
+            if z_ < 1.005:
+                continue                        # the belt line has its own sill ledge
+            near = glass[np.argmin((glass[:, 1] - y_) ** 2 + (glass[:, 2] - z_) ** 2)]
+            d_ = Vector((0, y_ - cy_, z_ - cz_)).normalized()
+            gx = abs(near[0]) - 0.007
+            loop.append((Vector((sgn * gx, y_, z_)) + d_ * 0.010, Vector((sgn * (gx - 0.004), y_, z_)) - d_ * 0.022))
+        # the hull runs round the glass; order the frame from one end of the belt line to the other
+        k0 = max(range(len(loop)), key=lambda k: (loop[k][0] - loop[k - 1][0]).length)
+        loop = loop[k0:] + loop[:k0]
+        verts, faces = [], []
+        for (a0, b0), (a1, b1) in zip(loop, loop[1:]):
+            base = len(verts)
+            verts.extend([a0, a1, b1, b0])
+            faces.append((base, base + 1, base + 2, base + 3))
+        sheet(f"{door.name}_Glass_Run_Channel", verts, faces, rubber, 0.004, parent=door)
+
+    # fabric insert across the middle of the card, with a satin trim line along its top
+
     zi = np.linspace(0.71, 0.86, 5)
     ins = {}
     for i, y in enumerate(ys[3:-3]):
         for j, z in enumerate(zi):
             cx = card_x(y, z, 0.004)
             ins[i, j] = Vector((sgn * cx, y, z)) if cx is not None else None
-    grid_sheet(f"{door.name}_Card_Insert", ins, len(ys) - 6, len(zi), cloth, sgn, 0.004, door)
+    grid_sheet(f"{door.name}_Card_Insert", ins, len(ys) - 6, len(zi), door_fabric, sgn, 0.004, door)
+    trim_line = {}
+    for i, y in enumerate(ys[2:-2]):
+        for j, z in enumerate((0.872, 0.884)):
+            cx = card_x(y, z, 0.005)
+            trim_line[i, j] = Vector((sgn * cx, y, z)) if cx is not None else None
+    grid_sheet(f"{door.name}_Card_Trim_Line", trim_line, len(ys) - 4, 2, accent, sgn, 0.003, door)
 
     def at(y, z, out):
         cx = card_x(y, z) or 0.78
@@ -1168,22 +1219,6 @@ def section_yz(bms, x, y_min):
             if p.y >= y_min and 0.815 <= p.z <= 0.985:
                 pts.append((p.y, p.z))
     return pts
-
-
-def hull2d(pts):
-    pts = sorted(set(pts))
-    if len(pts) < 3:
-        return pts
-
-    def half(seq):
-        h = []
-        for p in seq:
-            while len(h) >= 2 and ((h[-1][0] - h[-2][0]) * (p[1] - h[-2][1]) -
-                                   (h[-1][1] - h[-2][1]) * (p[0] - h[-2][0])) <= 0:
-                h.pop()
-            h.append(p)
-        return h
-    return half(pts)[:-1] + half(pts[::-1])[:-1]
 
 
 bm_lamps = bmesh.new()

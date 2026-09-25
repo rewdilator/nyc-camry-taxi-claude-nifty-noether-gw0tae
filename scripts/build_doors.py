@@ -122,6 +122,17 @@ def near_wheel(co):
     return min(np.hypot(co[:, 1] - wy, co[:, 2] - wz).min() for wy, wz in WHEELS) < 0.30
 
 
+def a_pillar_strip(co):
+    """Black strips, trim and glass edge running up the A-pillar, inboard of the front door's chrome
+    frame. They follow the door's leading edge in the side view but belong to the pillar: on the
+    door they would swing out as loose rods."""
+    ax = np.abs(co[:, 0])
+    if co[:, 2].min() < 0.95 or co[:, 2].max() - co[:, 2].min() < 0.15 or ax.max() > 0.78 or ax.min() < 0.5:
+        return False
+    line = np.array([edge_y("F", z) for z in co[:, 2]])
+    return bool((np.abs(co[:, 1] - line) < 0.10).all())
+
+
 def part_owner(co):
     """Owner that holds every vertex of a loose part, else None."""
     mn, mx = co.min(0), co.max(0)
@@ -131,17 +142,20 @@ def part_owner(co):
     if mn[0] < 0 < mx[0] or near_wheel(co):
         return None
     side = "L" if mn[0] > 0 else "R"
+    if a_pillar_strip(co):
+        return None
     for fr in ("F", "R"):
         if door_mask(co, fr, loose=True).all():
             return fr + side
     return None
 
 
-def split_candidate(src_name, mn, mx):
+def split_candidate(src_name, co):
     """Parts cut face by face: one-sided strips and trim panels running through the door band.
     Parts reaching the ground (wheels, arch liners, underbody) and parts crossing the car's centre
     line (dash, floor tub, headliner) are never cut, nor is anything in the paint shell."""
-    if mn[0] < 0 < mx[0] or mn[2] < 0.2:
+    mn, mx = co.min(0), co.max(0)
+    if mn[0] < 0 < mx[0] or mn[2] < 0.2 or a_pillar_strip(co):
         return False
     if max(abs(mn[0]), abs(mx[0])) < 0.66:
         return False
@@ -321,7 +335,7 @@ for src_name in SOURCES:
         elif owner:
             for f in faces:
                 f[tag] = CODE[owner]
-        elif not near_wheel(co) and split_candidate(src_name, mn, mx):
+        elif not near_wheel(co) and split_candidate(src_name, co):
             for f in faces:
                 f[tag] = CANDIDATE
             cand_faces |= faces

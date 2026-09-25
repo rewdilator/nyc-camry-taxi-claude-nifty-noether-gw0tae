@@ -75,7 +75,10 @@ Above the waistline it follows the window frame instead. At the front, that edge
 door glass, up the A-pillar. At the back, it follows the quarter-window slope.
 - **Doors:** a door takes the outer skin, mirror, handle, window glass, black window sash and
   chrome trim. The body keeps the painted roof-side rails and the A-pillar, roof-rail and B-pillar
-  trim, so opening a door leaves the roof edge and pillars intact.
+  trim, so opening a door leaves the roof edge and pillars intact. The black strips and glass edge
+  that run up the A-pillar, inboard of the front door's chrome frame, also stay on the body: they
+  follow the door's leading edge but belong to the pillar, and on the door they would swing out as
+  loose rods.
 - **Door trim:** below the window sill, the source's door trim was one low-poly side wall shared with
   the pillars. It's removed inside each door and replaced by a proper door card (see Interior).
 - **Wheels:** wheel, tyre and wheel-arch parts are never taken.
@@ -137,7 +140,10 @@ rebuilds it like a real NYC yellow cab:
   leather knob.
 - **Door cards:** every door has a moulded card that follows the door's inner skin, including the
   rear door's curve round the wheel arch. Each card has:
-  - a window-sill ledge up to the glass and a cloth insert
+  - a window-sill ledge up to the glass
+  - a grey fabric insert with a satin-silver trim line along its top
+  - a black glass-run channel round the top and ends of the window, so the frame reads as a moulded
+    channel from inside, not just the outer chrome strip
   - an armrest with a pull cup and window switches (the driver's door has the four-window pack)
   - a chrome interior handle in a recess, a speaker grille, a map pocket in the front doors, and a
     red courtesy reflector
