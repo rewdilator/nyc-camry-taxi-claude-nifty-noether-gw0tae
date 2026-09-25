@@ -285,3 +285,70 @@ for i, (lab, col) in enumerate((("START", (40, 150, 70, 255)), ("EXTRAS", (60, 6
     d.rounded_rectangle((x, 360, x + 220, 460), radius=16, fill=col)
     draw_centered(d, (x, 360, x + 220, 460), lab, font(BOLD, 34), WHITE)
 save(dm, "interior_driver_monitor.png")
+
+# 9. Instrument cluster (behind the steering wheel), 8:3
+W, H = 1200, 450
+ic = Image.new("RGBA", (W, H), (6, 8, 12, 255))
+d = ImageDraw.Draw(ic)
+
+
+def dial(cx, cy, r, lo, hi, val, label, unit, ticks):
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(70, 80, 95, 255), width=6)
+    a0, a1 = 135, 405
+    for k in range(ticks + 1):
+        a = math.radians(a0 + (a1 - a0) * k / ticks)
+        r0 = r - (26 if k % 2 == 0 else 14)
+        d.line((cx + r0 * math.cos(a), cy + r0 * math.sin(a), cx + (r - 6) * math.cos(a),
+                cy + (r - 6) * math.sin(a)), fill=WHITE, width=4 if k % 2 == 0 else 2)
+        if k % 2 == 0:
+            v = lo + (hi - lo) * k / ticks
+            draw_centered(d, (cx + (r - 56) * math.cos(a) - 30, cy + (r - 56) * math.sin(a) - 20,
+                              cx + (r - 56) * math.cos(a) + 30, cy + (r - 56) * math.sin(a) + 20),
+                          str(int(v)), font(BOLD, 26), GREY)
+    a = math.radians(a0 + (a1 - a0) * (val - lo) / (hi - lo))
+    d.line((cx, cy, cx + (r - 30) * math.cos(a), cy + (r - 30) * math.sin(a)), fill=(255, 70, 40, 255), width=8)
+    d.ellipse((cx - 16, cy - 16, cx + 16, cy + 16), fill=(40, 44, 54, 255))
+    draw_centered(d, (cx - 90, cy + 70, cx + 90, cy + 115), label, font(BOLD, 30), WHITE)
+    draw_centered(d, (cx - 90, cy + 112, cx + 90, cy + 145), unit, font(REG, 24), GREY)
+
+
+dial(215, 225, 190, 0, 8, 0, "POWER", "HYBRID", 8)
+dial(W - 215, 225, 190, 0, 160, 0, "0", "MPH", 16)
+d.rounded_rectangle((440, 60, 760, 390), radius=22, fill=(18, 22, 30, 255), outline=(60, 66, 80, 255), width=3)
+draw_centered(d, (440, 80, 760, 150), "READY", font(BOLD, 52), (60, 220, 90, 255))
+draw_centered(d, (440, 160, 760, 220), "P", font(BOLD, 60), WHITE)
+draw_centered(d, (440, 235, 760, 280), "RANGE  412 mi", font(REG, 30), GREY)
+draw_centered(d, (440, 285, 760, 330), "ODO  84,215 mi", font(REG, 30), GREY)
+draw_centered(d, (440, 335, 760, 380), "72°F   10:42", font(REG, 30), GREY)
+save(ic, "interior_gauge_cluster.png")
+
+# 10. Centre touchscreen (8 in, 16:9-ish) on the dash
+W, H = 1000, 580
+it = Image.new("RGBA", (W, H), (12, 14, 20, 255))
+d = ImageDraw.Draw(it)
+d.rectangle((0, 0, W, 64), fill=(24, 28, 38, 255))
+text_left(d, (24, 16), "10:42", font(BOLD, 32), WHITE)
+text_right(d, (W - 24, 16), "72°F", font(BOLD, 32), WHITE)
+tiles = [("NAV", (40, 120, 200)), ("AUDIO", (160, 60, 170)), ("PHONE", (40, 160, 90)),
+         ("APPS", (200, 120, 30)), ("CLIMATE", (30, 150, 170)), ("SETUP", (90, 96, 110))]
+for k, (lab, col) in enumerate(tiles):
+    x0, y0 = 40 + (k % 3) * 315, 100 + (k // 3) * 230
+    d.rounded_rectangle((x0, y0, x0 + 290, y0 + 200), radius=20, fill=col + (255,))
+    draw_centered(d, (x0, y0 + 110, x0 + 290, y0 + 180), lab, font(BOLD, 40), WHITE)
+    d.ellipse((x0 + 115, y0 + 30, x0 + 175, y0 + 90), outline=WHITE, width=6)
+save(it, "interior_infotainment.png")
+
+# 11. Climate control panel (under the centre vents), 4:1
+W, H = 800, 200
+cp = Image.new("RGBA", (W, H), (20, 21, 24, 255))
+d = ImageDraw.Draw(cp)
+for cx in (110, W - 110):                          # temperature knobs
+    d.ellipse((cx - 70, 30, cx + 70, 170), fill=(40, 42, 46, 255), outline=(150, 152, 158, 255), width=6)
+    draw_centered(d, (cx - 60, 70, cx + 60, 130), "72", font(BOLD, 44), WHITE)
+labels = ["AUTO", "A/C", "FAN", "MODE", "DEF", "RECIRC"]
+for k, lab in enumerate(labels):
+    x0 = 210 + (k % 3) * 130
+    y0 = 30 + (k // 3) * 80
+    d.rounded_rectangle((x0, y0, x0 + 115, y0 + 62), radius=10, fill=(44, 46, 52, 255))
+    draw_centered(d, (x0, y0, x0 + 115, y0 + 62), lab, font(BOLD, 24), WHITE)
+save(cp, "interior_climate_panel.png")

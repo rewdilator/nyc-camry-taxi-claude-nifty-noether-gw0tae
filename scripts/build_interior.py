@@ -345,7 +345,8 @@ for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckl
         black_plastic, bevel=0.006, rot=(math.radians(-20), 0, 0))
 # rear belts come out of the parcel shelf and lie down the seat back
 for x, tag in ((0.47, "L"), (0.0, "C"), (-0.47, "R")):
-    top = cast((x, 1.2, 1.4), (0, 0.35, -1), trim_bvh) or Vector((x, 1.30, 1.16))
+    # anchor on the parcel shelf just behind the head restraints (cast down, below the rear glass)
+    top = cast((x, 1.33, 1.27), -Z, trim_bvh, 0.4) or Vector((x, 1.33, 1.16))
     strap(f"Seat_Belt_Rear_{tag}", top + Vector((0, -0.01, 0.005)),
           (x * 1.12, REAR_Y1 - 0.04, SEAT_Z + CUSH_T + 0.02), 0.048, webbing, face=Vector((0, -1, 0.6)))
     box(f"Seat_Belt_Guide_Rear_{tag}", (0.07, 0.03, 0.015), top + Vector((0, 0, 0.004)), black_plastic,
@@ -360,53 +361,251 @@ box("Floor_Mat_Rear", (2 * rear_hw - 0.1, 0.10, 0.008), (0, (0.36 + REAR_Y0) / 2
 
 box("Console_Base", (0.18, 0.86, 0.74 - FLOOR_Z), (0, -0.44, (0.74 + FLOOR_Z) / 2), trim, bevel=0.02)
 box("Console_Armrest", (0.19, 0.30, 0.05), (0, -0.10, SEAT_Z + 0.185), cloth, bevel=0.018, segments=4)
-box("Console_Shifter_Boot", (0.07, 0.10, 0.04), (0, -0.66, SEAT_Z + 0.18), trim, bevel=0.015)
-box("Console_Shifter_Knob", (0.04, 0.05, 0.10), (0, -0.66, SEAT_Z + 0.24), trim, bevel=0.018, segments=4)
+box("Console_Shifter_Boot", (0.07, 0.10, 0.04), (0, -0.50, SEAT_Z + 0.18), trim, bevel=0.015)
+box("Console_Shifter_Knob", (0.04, 0.05, 0.10), (0, -0.50, SEAT_Z + 0.24), trim, bevel=0.018, segments=4)
 
-# Lower door cards: the source door trim stops at the old floor height, which leaves the inside of
-# the painted door skin showing once the floor is lowered. A panel is ray-cast onto each door's
-# inner skin (door closed) and parented to the door, so it swings with it.
-for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Door_RR")]:
-    sgn = 1 if door.name.endswith("L") else -1
-    bm_d = bmesh.new()
-    bm_d.from_mesh(door.data)
-    bm_d.transform(door.matrix_world)
-    d_bvh = BVHTree.FromBMesh(bm_d)
-    dy = np.array([v.co.y for v in bm_d.verts if 0.30 < v.co.z < 0.62 and abs(v.co.x) > 0.78])
-    bm_d.free()
-    ys = np.linspace(dy.min() + 0.035, dy.max() - 0.035, 24)
-    zs = np.linspace(FLOOR_Z + 0.07, 0.64, 10)
-    grid = {}
-    for j, z in enumerate(zs):
-        for i, y in enumerate(ys):
-            h = d_bvh.ray_cast(Vector((sgn * 0.3, y, z)), Vector((sgn, 0, 0)), 1.0)[0]
-            out = d_bvh.ray_cast(Vector((sgn * 1.4, y, z)), Vector((-sgn, 0, 0)), 1.0)[0]
-            if h is None or abs(h.x) < 0.72 or out is None:
-                grid[i, j] = None
-                continue
-            # 12 mm inside the inner surface, and never closer than 20 mm to the outer skin (the skin
-            # curves in at the bottom of the door, where a card could otherwise poke through)
-            xc = min(abs(h.x) - 0.012, abs(out.x) - 0.020)
-            grid[i, j] = Vector((sgn * xc, h.y, h.z))
+# ---------------------------------------------------------------------------
+# 3a. Dash, console and roof details (the source dash is a bare black shell)
+# ---------------------------------------------------------------------------
+cluster_mat = material("Interior_Gauge_Cluster", rough=0.1, image="interior_gauge_cluster.png", emission=1.2)
+screen_mat = material("Interior_Touchscreen", rough=0.1, image="interior_infotainment.png", emission=0.9)
+climate_mat = material("Interior_Climate_Panel", rough=0.3, image="interior_climate_panel.png", emission=0.25)
+lens_mat = material("Interior_Lamp_Lens", (0.85, 0.85, 0.8, 1), rough=0.35)
+mirror_mat = material("Interior_Vanity_Mirror", (0.9, 0.9, 0.9, 1), rough=0.05, metal=1.0)
+
+
+def cylinder(name, r, depth, loc, mat, segments=24):
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segments, radius1=r, radius2=r, depth=depth)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(mat)
+    ob = bpy.data.objects.new(name, me)
+    ob.location = loc
+    return add(ob)
+
+
+def dash_face_y(x, z):
+    h = cast((x, -0.3, z), FWD, trim_bvh, 1.0)
+    return h.y if h is not None else -0.70
+
+
+def vent(name, x, z, w=0.10, h=0.035, depth=0.02):
+    y = dash_face_y(x, z)
+    box(f"{name}_Housing", (w, depth, h), (x, y + depth / 2 - 0.004, z), black_plastic, bevel=0.006)
+    for k in range(3):                     # adjustable slats
+        box(f"{name}_Slat_{k}", (w - 0.012, 0.012, 0.003), (x, y + depth - 0.006, z - h / 3 + k * h / 3),
+            steel, bevel=0.001)
+
+
+# instrument cluster in the recess under the cluster hood, facing the driver through the wheel
+quad("Dash_Gauge_Cluster", (0.38, -0.765, 0.985), 0.30, 0.1125, Vector((0, 1, 0.28)), cluster_mat)
+box("Dash_Gauge_Cluster_Backing", (0.32, 0.02, 0.13), (0.38, -0.78, 0.985), black_plastic,
+    rot=(math.radians(-15.6), 0, 0))
+# 8 in touchscreen on the centre of the dash, vents below it and at both ends, climate controls
+scr_x, scr_z = -0.06, 0.955
+device("Dash_Touchscreen", (scr_x, dash_face_y(scr_x, scr_z) + 0.012, scr_z), (0.215, 0.13, 0.02),
+       Vector((0, 1, 0.12)), black_plastic, screen_mat, (0.195, 0.113))
+vent("Dash_Vent_Centre_L", -0.12, 0.83)
+vent("Dash_Vent_Centre_R", 0.00, 0.83)
+vent("Dash_Vent_Outer_L", 0.62, 0.95, w=0.09, h=0.055)
+vent("Dash_Vent_Outer_R", -0.62, 0.95, w=0.09, h=0.055)
+cz = 0.775
+quad("Dash_Climate_Panel", (-0.06, dash_face_y(-0.06, cz) + 0.004, cz), 0.20, 0.05, Vector((0, 1, 0.35)),
+     climate_mat)
+box("Dash_Start_Button", (0.03, 0.012, 0.03), (0.16, dash_face_y(0.16, 0.80) + 0.004, 0.80), chrome, bevel=0.008)
+# cup holders between the shifter and the armrest
+for x in (-0.045, 0.045):
+    cylinder(f"Console_Cup_Holder_{'L' if x > 0 else 'R'}", 0.038, 0.004, (x, -0.33, 0.742), black_plastic)
+    cylinder(f"Console_Cup_Ring_{'L' if x > 0 else 'R'}", 0.042, 0.002, (x, -0.33, 0.741), steel)
+
+
+def roof_z(x, y):
+    h = cast((x, y, 1.1), Z, car_bvh, 0.6)
+    return h.z if h is not None else 1.40
+
+
+# fabric headliner over the source roof lining (a near-white atlas swatch that blows out in renders)
+headliner = material("Interior_Headliner_Fabric", (0.30, 0.30, 0.29, 1), rough=0.95)
+xs = np.linspace(-0.66, 0.66, 27)
+ys = np.linspace(-0.40, 1.30, 35)
+hl = {}
+for i, x in enumerate(xs):
+    for j, y in enumerate(ys):
+        # from above, onto the source lining itself (casting up would catch the head restraints)
+        h = cast((x, y, 1.60), -Z, trim_bvh, 0.35)
+        hl[i, j] = h - Z * 0.006 if h is not None and h.z > 1.28 else None
+vi, verts, faces = {}, [], []
+for k, p_ in hl.items():
+    if p_ is not None:
+        vi[k] = len(verts)
+        verts.append(p_)
+for i in range(len(xs) - 1):
+    for j in range(len(ys) - 1):
+        q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+        if all(k in vi for k in q):
+            faces.append(tuple(vi[k] for k in q[::-1]))
+sheet("Roof_Headliner", verts, faces, headliner, 0.004).data.shade_smooth()
+
+# sun visors stowed against the headliner (vanity mirror on the passenger's)
+for x, tag in ((0.34, "Driver"), (-0.34, "Passenger")):
+    z0, z1 = roof_z(x, -0.37), roof_z(x, -0.21)
+    tilt = math.atan2(z1 - z0, 0.16)
+    zc = (z0 + z1) / 2 - 0.016
+    box(f"Roof_Sun_Visor_{tag}", (0.36, 0.165, 0.022), (x, -0.29, zc), cloth, bevel=0.008,
+        rot=(tilt, 0, 0))
+    box(f"Roof_Visor_Clip_{tag}", (0.02, 0.02, 0.02), (x * 0.18, -0.36, roof_z(x * 0.18, -0.36) - 0.01),
+        black_plastic, bevel=0.004)
+    if x < 0:
+        box("Roof_Vanity_Mirror", (0.13, 0.07, 0.002), (x, -0.29, zc - 0.0115), mirror_mat, rot=(tilt, 0, 0))
+# overhead console with map lamps, dome lamp over the rear seat
+zc = roof_z(0, -0.27)
+box("Roof_Overhead_Console", (0.20, 0.12, 0.03), (0, -0.27, zc - 0.012), black_plastic, bevel=0.008)
+for x in (-0.05, 0.05):
+    box(f"Roof_Map_Lamp_{'L' if x > 0 else 'R'}", (0.06, 0.045, 0.004), (x, -0.26, zc - 0.028), lens_mat,
+        bevel=0.001)
+zc = roof_z(0, 0.60)
+box("Roof_Dome_Lamp", (0.16, 0.09, 0.016), (0, 0.60, zc - 0.006), black_plastic, bevel=0.005)
+box("Roof_Dome_Lamp_Lens", (0.13, 0.065, 0.004), (0, 0.60, zc - 0.015), lens_mat, bevel=0.001)
+# grab handles on the roof rails above the passenger doors
+for sgn_, y in ((-1, -0.05), (1, 0.70), (-1, 0.70)):
+    h = cast((0, y, 1.37), Vector((sgn_, 0, 0)), car_bvh, 1.0)
+    xr = abs(h.x) if h is not None else 0.55
+    tag = f"{'L' if sgn_ > 0 else 'R'}{'F' if y < 0.3 else 'R'}"
+    box(f"Roof_Grab_Handle_{tag}", (0.022, 0.20, 0.02), (sgn_ * (xr - 0.05), y, 1.315), black_plastic,
+        bevel=0.007, rot=(0, math.radians(-30 * sgn_), 0))
+    for dy_ in (-0.085, 0.085):
+        box(f"Roof_Grab_Handle_{tag}_Mount_{'F' if dy_ < 0 else 'R'}", (0.035, 0.025, 0.045),
+            (sgn_ * (xr - 0.03), y + dy_, 1.34), black_plastic, bevel=0.006, rot=(0, math.radians(-30 * sgn_), 0))
+
+# Door cards. build_doors.py deletes the source's low-poly side wall inside each door, so every door
+# gets a real card: a moulded panel following the door's inner skin, a window-sill ledge up to the
+# glass, a cloth insert, armrest with pull cup, chrome interior handle, window switches, speaker grille,
+# map pocket and a courtesy reflector. All of it is parented to the door and swings with it.
+card_mat = material("Interior_Door_Card", (0.028, 0.028, 0.03, 1), rough=0.55)
+reflector = material("Interior_Door_Reflector", (0.35, 0.01, 0.01, 1), rough=0.3)
+CARD_OFF = 0.065          # card surface this far inside the outer skin
+cards = []
+
+
+def door_child(ob, door):
+    ob.parent = door
+    ob.matrix_parent_inverse = door.matrix_world.inverted()
+    return ob
+
+
+def grid_sheet(name, grid, nu, nv, mat, sgn, thickness, parent):
     vi, verts, faces = {}, [], []
     for k, p_ in grid.items():
         if p_ is not None:
             vi[k] = len(verts)
             verts.append(p_)
-    for (i, j) in grid:
-        q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
-        if all(k in vi for k in q):
-            faces.append(tuple(vi[k] for k in (q if sgn < 0 else q[::-1])))
-    card = sheet(f"{door.name}_Lower_Card", verts, faces, trim, 0.008, parent=door)
-    card.data.shade_smooth()
-    if door.name.startswith("Door_F"):   # speaker grille low in the front door cards
-        c = Vector((sgn * 0.0, (ys[0] + ys[-1]) / 2 - 0.12, 0.47))
-        h = d_bvh.ray_cast(Vector((sgn * 0.3, c.y, c.z)), Vector((sgn, 0, 0)), 1.0)[0]
-        if h is not None:
-            g = box(f"{door.name}_Speaker_Grille", (0.010, 0.17, 0.17), h - Vector((sgn * 0.026, 0, 0)),
-                    black_plastic, bevel=0.004, segments=2)
-            g.parent = door
-            g.matrix_parent_inverse = door.matrix_world.inverted()
+    for i in range(nu - 1):
+        for j in range(nv - 1):
+            q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+            if all(k in vi for k in q):
+                faces.append(tuple(vi[k] for k in (q if sgn < 0 else q[::-1])))
+    ob = sheet(name, verts, faces, mat, thickness, parent=parent)
+    ob.data.shade_smooth()
+    return ob
+
+
+for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Door_RR")]:
+    sgn = 1 if door.name.endswith("L") else -1
+    front = door.name.startswith("Door_F")
+    bm_d = bmesh.new()
+    bm_d.from_mesh(door.data)
+    bm_d.transform(door.matrix_world)
+    d_bvh = BVHTree.FromBMesh(bm_d)
+    dy = np.array([v.co.y for v in bm_d.verts if 0.40 < v.co.z < 0.90 and abs(v.co.x) > 0.78])
+    bm_d.free()
+    y_a, y_b = dy.min() + 0.05, dy.max() - 0.05
+
+    def skin_x(y, z):
+        h = d_bvh.ray_cast(Vector((sgn * 0.3, y, z)), Vector((sgn, 0, 0)), 1.0)[0]
+        return abs(h.x) if h is not None and abs(h.x) > 0.76 else None
+
+    def card_x(y, z, extra=0.0):
+        sx = skin_x(y, z)
+        return None if sx is None else max(sx - CARD_OFF - extra, 0.72)
+
+    zs = list(np.linspace(FLOOR_Z + 0.03, 0.93, 16))
+    fine = np.linspace(y_a - 0.04, y_b + 0.04, 120)
+
+    def row_span(z):
+        """Where the skin exists at height z (the rear door's lower edge curves round the wheel arch),
+        so each row's points spread over its own span and the card edge follows the door's shape."""
+        ok = [y for y in fine if skin_x(y, z) is not None]
+        return (max(min(ok), y_a), min(max(ok), y_b)) if ok else None
+
+    NU = 30
+    grid = {}
+    for j, z in enumerate(zs):
+        sp = row_span(z)
+        for i in range(NU):
+            if sp is None:
+                grid[i, j] = None
+                continue
+            y = sp[0] + (sp[1] - sp[0]) * i / (NU - 1)
+            cx = card_x(y, z)
+            grid[i, j] = Vector((sgn * cx, y, z)) if cx is not None else None
+    # window-sill ledge from the top of the card out to the glass
+    for i in range(NU):
+        top = grid[i, len(zs) - 1]
+        g = d_bvh.ray_cast(Vector((sgn * 0.3, top.y, 0.99)), Vector((sgn, 0, 0)), 1.0)[0] if top else None
+        grid[i, len(zs)] = (Vector((sgn * (abs(g.x) - 0.012), top.y, 0.965))
+                            if g is not None and abs(g.x) - 0.012 > abs(top.x) else None)
+    ys = np.linspace(y_a, y_b, NU)
+    cards.append(grid_sheet(f"{door.name}_Door_Card", grid, NU, len(zs) + 1, card_mat, sgn, 0.01, door))
+
+    # cloth insert across the middle of the card
+    zi = np.linspace(0.71, 0.86, 5)
+    ins = {}
+    for i, y in enumerate(ys[3:-3]):
+        for j, z in enumerate(zi):
+            cx = card_x(y, z, 0.004)
+            ins[i, j] = Vector((sgn * cx, y, z)) if cx is not None else None
+    grid_sheet(f"{door.name}_Card_Insert", ins, len(ys) - 6, len(zi), cloth, sgn, 0.004, door)
+
+    def at(y, z, out):
+        cx = card_x(y, z) or 0.78
+        return Vector((sgn * (cx - out), y, z))
+
+    span = y_b - y_a
+    if front:
+        ar0, ar1 = y_a + 0.38 * span, y_b - 0.06
+    else:
+        ar0, ar1 = y_a + 0.06, y_a + 0.06 + min(0.42, 0.6 * span)
+    arm_x = min((card_x(y, 0.665) or 0.78) for y in np.linspace(ar0, ar1, 6))
+    arm_c = Vector((sgn * (arm_x - 0.036), (ar0 + ar1) / 2, 0.665))
+    door_child(box(f"{door.name}_Armrest", (0.075, ar1 - ar0, 0.045), arm_c, cloth, bevel=0.012, segments=3), door)
+    door_child(box(f"{door.name}_Pull_Cup", (0.045, 0.11, 0.012), arm_c + Vector((0, (ar1 - ar0) / 2 - 0.10, 0.02)),
+                   black_plastic, bevel=0.004), door)
+    # window switches on the armrest front: the driver's door has the four-window pack
+    n_sw = 4 if door.name == "Door_FL" else 1
+    sw_y = ar0 + 0.05 if not front else ar0 + 0.06
+    door_child(box(f"{door.name}_Switch_Panel", (0.05, 0.045 * n_sw + 0.02, 0.01),
+                   Vector((arm_c.x, sw_y + 0.0225 * n_sw, 0.692)), trim, bevel=0.003), door)
+    for k in range(n_sw):
+        door_child(box(f"{door.name}_Window_Switch_{k}", (0.018, 0.03, 0.012),
+                       Vector((arm_c.x, sw_y + 0.02 + 0.045 * k, 0.699)), black_plastic, bevel=0.003), door)
+    # chrome interior handle in its recess, near the front of the door
+    hy = y_a + 0.11
+    door_child(box(f"{door.name}_Handle_Recess", (0.02, 0.13, 0.05), at(hy, 0.84, 0.008), black_plastic,
+                   bevel=0.006), door)
+    door_child(box(f"{door.name}_Interior_Handle", (0.016, 0.085, 0.02), at(hy, 0.84, 0.02), chrome,
+                   bevel=0.005), door)
+    # speaker grille and map pocket low on the card, reflector at the bottom rear corner
+    sp_y, sp_s = (y_a + 0.17, 0.17) if front else (y_a + 0.20, 0.14)
+    door_child(box(f"{door.name}_Speaker_Grille", (0.01, sp_s, sp_s), at(sp_y, 0.47, 0.006), black_plastic,
+                   bevel=0.004), door)
+    if front:
+        mp0, mp1 = y_a + 0.30, y_b - 0.08
+        door_child(box(f"{door.name}_Map_Pocket", (0.045, mp1 - mp0, 0.07), at((mp0 + mp1) / 2, 0.40, 0.025),
+                       card_mat, bevel=0.008), door)
+    door_child(box(f"{door.name}_Reflector", (0.006, 0.07, 0.02), at(y_b - 0.03, FLOOR_Z + 0.05, 0.004),
+                   reflector, bevel=0.002), door)
 
 # ---------------------------------------------------------------------------
 # 3b. Trunk: carpeted liner, wheel-arch humps, load floor; lid liner rides with the lid
@@ -514,12 +713,25 @@ bm_lid.free()
 PY = 0.32                  # front face of the partition
 SPLIT_Z = 0.98             # opaque lower panel below, polycarbonate above
 centre = Vector((0, PY, 1.0))
+bm_cards = bmesh.new()
+for c_ in cards:
+    tmp = bmesh.new()
+    tmp.from_mesh(c_.data)
+    tmp.transform(c_.matrix_world)
+    me_tmp = bpy.data.meshes.new("_tmp")
+    tmp.to_mesh(me_tmp)
+    tmp.free()
+    bm_cards.from_mesh(me_tmp)
+    bpy.data.meshes.remove(me_tmp)
+card_bvh = BVHTree.FromBMesh(bm_cards)
+bm_cards.free()
 contour = []
 for a in np.linspace(0, 2 * math.pi, 96, endpoint=False):
     d = Vector((math.cos(a), 0, math.sin(a)))
-    hit = cast(centre, d)
-    if hit is None:
+    hits = [h for h in (cast(centre, d), card_bvh.ray_cast(centre, d, 3.0)[0]) if h is not None]
+    if not hits:
         continue
+    hit = min(hits, key=lambda h: (h - centre).length)
     p = centre + d * ((hit - centre).length - 0.012)
     p.z = max(p.z, FLOOR_Z + 0.002)
     p.y = PY

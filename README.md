@@ -71,12 +71,13 @@ wide badge lettering. Objects, meshes, collections and files are named `Cemel` /
 **Opening doors and trunk.** The source merges each material into one mesh, so every door was
 spread across the paint, trim, glass and chassis meshes. `scripts/build_doors.py` measures each
 door's outline from its outer skin (the exact cross-section of the skin at every 5 mm of height).
-Above the waistline it follows the window frame, the A-pillar and the quarter-window slope instead.
+Above the waistline it follows the window frame instead. At the front, that edge runs just ahead of the
+door glass, up the A-pillar. At the back, it follows the quarter-window slope.
 - **Doors:** a door takes the outer skin, mirror, handle, window glass, black window sash and
-  chrome trim. The body keeps the painted roof-side rails above the doors, so opening a door leaves
-  the roof edge intact.
-- **Trim across a shut line:** side trim panels that run across a shut line are cut exactly along
-  the door edge, so no jagged edges are left.
+  chrome trim. The body keeps the painted roof-side rails and the A-pillar, roof-rail and B-pillar
+  trim, so opening a door leaves the roof edge and pillars intact.
+- **Door trim:** below the window sill, the source's door trim was one low-poly side wall shared with
+  the pillars. It's removed inside each door and replaced by a proper door card (see Interior).
 - **Wheels:** wheel, tyre and wheel-arch parts are never taken.
 - **Hinges:** each hinge line runs 2 cm behind the door's leading edge, on the outer skin.
 - **Trunk lid:** the lid is a shell. Its top skin runs from the hinge line back. Its rear face
@@ -110,8 +111,24 @@ rebuilds it like a real NYC yellow cab:
 - **Seat belts:** front belts hang stowed from D-rings on the B-pillars, with buckles on the
   console side. The rear belts come out of the parcel shelf, and the rear buckles sit in the bench.
   There's also a centre console with an armrest and a shifter.
-- **Door cards:** lower door-card panels, with speaker grilles in the front doors, cover the inside
-  of the door skins. They're part of the doors, so they swing with them.
+- **Door cards:** every door has a moulded card that follows the door's inner skin, including the
+  rear door's curve round the wheel arch. Each card has:
+  - a window-sill ledge up to the glass and a cloth insert
+  - an armrest with a pull cup and window switches (the driver's door has the four-window pack)
+  - a chrome interior handle in a recess, a speaker grille, a map pocket in the front doors, and a
+    red courtesy reflector
+
+  The cards are part of the doors, so they swing with them.
+- **Dash:**
+  - an instrument cluster (hybrid power meter, READY/P display, speedometer) in the cluster hood
+  - an 8 in touchscreen in the centre, with the vents below it
+  - air vents with slats at both ends of the dash
+  - a climate control panel and a start button
+- **Console:** cup holders in the centre console, behind the shifter.
+- **Roof:**
+  - a grey fabric headliner and sun visors (the passenger's has a vanity mirror)
+  - an overhead console with map lamps, and a dome lamp over the rear seat
+  - grab handles above the three passenger doors
 - **Partition:** behind the front seats. Its outline is traced from the cabin's cross-section, so
   it fits the doors, floor and headliner. It has an opaque black lower panel and a clear
   polycarbonate upper pane in a black aluminium frame. There's a sliding pass-through window on the
@@ -122,7 +139,7 @@ rebuilds it like a real NYC yellow cab:
   - the driver's hack licence in a frame (the name and number are placeholders)
   - the Taxi Rider Bill of Rights, a "Buckle up" sticker and a no-smoking sticker
 - **For the driver:** a taximeter on the dash top showing $3.00 and HIRED in red LEDs, and the
-  T-PEP driver monitor on an arm at the centre stack.
+  T-PEP driver monitor on an arm at the centre stack, to the right of the wheel.
 - **Trunk:** a carpeted liner with wheel-arch humps, a load floor with a pull handle, and a striker.
   Under the lid there's a carpeted liner and an inner panel, both moving with the lid. Painted
   gutters run along the sides of the opening.
@@ -146,7 +163,8 @@ NYC_Taxi_Cemel_2020 (collection)
 ├── Taxi_Livery    Decal_Logo_*, Decal_RateOfFare_*, Decal_Medallion_*
 ├── Roof_Topper    Topper_Housing, Topper_Ad_L/R, Topper_MedallionLight_*, rack bars, feet, posts
 ├── License_Plates Plate_Front/Rear + brackets
-└── Taxi_Interior  Floor_*, Pedal_*, Seat_*, Console_*, Door_*_Lower_Card, Partition_* (panels,
+└── Taxi_Interior  Floor_*, Pedal_*, Seat_*, Console_*, Dash_*, Roof_*, Door_*_Door_Card (+ armrest,
+                   handle, switches, speaker, pocket; parented to the doors), Partition_* (panels,
                    frame, Taxi TV, card reader, notices), Taximeter_*, Driver_Monitor_*, Trunk_*
 Studio (collection) Camera, Sun, Ground, plus the sky world. Delete it if you don't need it.
 ```

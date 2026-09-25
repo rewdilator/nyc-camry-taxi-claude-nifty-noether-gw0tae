@@ -9,6 +9,10 @@ glass and chassis meshes. Every loose part (a connected piece of a mesh) that fi
 volume moves to that door whole. Parts that span two doors, such as the window frame strips, are
 cut face by face at the shut line between the doors.
 
+Below the window sill the source's door trim is a low-poly side wall shared with the pillars; it is
+deleted inside the doors and build_interior.py builds real door cards. Above the sill the trim is the
+A-pillar, roof-rail and B-pillar trim, which stays on the body; the doors keep their black sashes.
+
 Each opening part becomes an object whose origin is on its hinge axis:
     Door_FL, Door_FR, Door_RL, Door_RR   rotate about their local Z axis (hinge line)
     Trunk_Lid                            rotates about its local X axis
@@ -63,7 +67,11 @@ def edge_y(fr, z):
     zs, ys, top = PROFILE[fr]
     # near the top of a skin its cross-section gets short, so the window frame takes over there
     if fr == "F":
-        return float(np.interp(z, zs, ys)) if z <= 0.85 else DOOR_Y["F"][0]
+        if z <= 0.85:
+            return float(np.interp(z, zs, ys))
+        # A-pillar: the door frame runs up and back just ahead of the door glass (measured front
+        # edge of the glass: y -0.86 at z 1.10, slope 1.82); the A-pillar trim ahead of it is body
+        return max(DOOR_Y["F"][0], -0.88 + (z - 1.10) * 1.82)
     if z <= 0.95:
         return float(np.interp(z, zs, ys))
     return min(float(ys.max()), 1.285 - (z - 1.10) * 1.083)   # quarter-window frame slope
@@ -227,6 +235,9 @@ def cut_planes():
 
 CODE = {o: i + 1 for i, o in enumerate(OWNERS)}      # 0 = stays on the body
 CANDIDATE = 99
+DELETE = 97
+SILL_Z = 0.97             # door trim below the window sill is rebuilt as a proper door card
+B_PILLAR = (0.12, 0.27)   # inner B-pillar trim between the doors stays on the body
 report = {}
 for src_name in SOURCES:
     src = bpy.data.objects[src_name]
@@ -239,7 +250,10 @@ for src_name in SOURCES:
         mn, mx = co.min(0), co.max(0)
         faces = {f for v in comp for f in v.link_faces}
         owner = part_owner(co)
-        if owner:
+        if owner and owner != "Trunk" and src_name == "Cemel_Trim_Interior" and mx[2] < SILL_Z:
+            for f in faces:
+                f[tag] = DELETE          # original door-card pieces: replaced by a door card
+        elif owner:
             for f in faces:
                 f[tag] = CODE[owner]
         elif not near_wheel(co) and split_candidate(src_name, mn, mx):
@@ -256,7 +270,14 @@ for src_name in SOURCES:
         for f in bm.faces:
             if f[tag] == CANDIDATE:
                 o = door_of_point(f.calc_center_median())
-                f[tag] = CODE[o] if o else 0
+                c = f.calc_center_median()
+                if o and src_name == "Cemel_Trim_Interior":
+                    # below the sill: low-poly side wall, replaced by a door card; above it: A-pillar,
+                    # roof-rail and B-pillar trim inside the glass line, which stays on the body
+                    in_b_pillar = B_PILLAR[0] < c.y < B_PILLAR[1]
+                    f[tag] = DELETE if c.z < SILL_Z and not in_b_pillar else 0
+                else:
+                    f[tag] = CODE[o] if o else 0
     counts = {o: sum(1 for f in bm.faces if f[tag] == CODE[o]) for o in OWNERS}
     report[src_name] = counts
     bm.to_mesh(src.data)
@@ -278,7 +299,7 @@ for src_name in SOURCES:
     bm = bmesh.new()
     bm.from_mesh(src.data)
     tag = bm.faces.layers.int["opening"]
-    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[tag] != 0], context="FACES")
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[tag] != 0], context="FACES")   # incl. DELETE
     bm.faces.layers.int.remove(tag)
     bm.to_mesh(src.data)
     bm.free()

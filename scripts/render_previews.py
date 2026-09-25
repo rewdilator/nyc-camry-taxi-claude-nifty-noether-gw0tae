@@ -46,9 +46,11 @@ INTERIOR = {
     "dash": ((0.36, -0.1, 1.18), (0.0, -0.8, 0.95), 22),    # driver's seat: taximeter, monitor
 }
 light = bpy.data.objects.new("CabinLight", bpy.data.lights.new("CabinLight", "AREA"))
-light.data.energy, light.data.size = 12, 0.6
-light.location = (0, 0.75, 1.38)
+light.data.energy, light.data.size = 10, 0.5
+light.location = (0, 0.75, 1.24)
 light.visible_camera = False
+light.visible_glossy = False          # a preview fill light, not something to see in the glass
+light.visible_transmission = False
 light.hide_render = True
 sc.collection.objects.link(light)
 OPENINGS = [o for o in bpy.data.objects if "open" in o.keys()]
@@ -58,8 +60,8 @@ for name in views:
     for o in OPENINGS:
         o["open"] = 1.0 if name.endswith("_open") else 0.0
     light.hide_render = v not in INTERIOR and v != "trunk"
-    light.location = (0, 1.85, 1.25) if v == "trunk" else (0, 0.75, 1.38)
-    light.data.energy = 40 if v == "trunk" else 12
+    light.location = (0, 1.85, 1.25) if v == "trunk" else (0, 0.75, 1.24)
+    light.data.energy = 40 if v == "trunk" else 10
     if v in INTERIOR:
         loc, t, cam.data.lens = INTERIOR[v]
         cam.data.clip_start = 0.03
