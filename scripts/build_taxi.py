@@ -1,7 +1,10 @@
-"""Turn the Sketchfab Toyota Camry 2020 scene into a real-world-scale NYC yellow cab.
+"""Turn the Sketchfab "Toyota Camry 2020" scene into a real-world-scale NYC yellow cab, the Cemel.
 
     python3 scripts/make_textures.py        # (Pillow) livery textures -> textures/
-    python3 scripts/build_taxi.py           # (bpy)    Untitled.blend -> NYC_Taxi_Camry_2020.blend
+    python3 scripts/build_taxi.py           # (bpy)    Untitled.blend -> NYC_Taxi_Cemel_2020.blend
+    python3 scripts/rebrand_cemel.py        # (bpy)    Cemel badge on the trunk
+    python3 scripts/build_doors.py          # (bpy)    doors and trunk lid on hinges
+    python3 scripts/build_interior.py       # (bpy)    NYC taxi interior
 
 Can also be run inside Blender:  blender -b Untitled.blend -P scripts/build_taxi.py
 """
@@ -16,10 +19,10 @@ from mathutils.bvhtree import BVHTree
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "Untitled.blend")
-DST = os.path.join(ROOT, "NYC_Taxi_Camry_2020.blend")
+DST = os.path.join(ROOT, "NYC_Taxi_Cemel_2020.blend")
 TEX = os.path.join(ROOT, "textures")
 
-# 2020 Toyota Camry LE (the NYC taxi fleet's usual Camry Hybrid trim): 4,879 mm long.
+# Real-world length of the source car (a 2020 mid-size sedan, LE trim): 4,879 mm.
 REAL_LENGTH_M = 4.879
 
 # NYC taxi yellow (Dupont M6284-style), sRGB 247/181/0.
@@ -54,11 +57,11 @@ for o in [o for o in bpy.data.objects if o.type == "EMPTY"]:
     bpy.data.objects.remove(o)
 
 RENAME = {
-    "Object_13": "Camry_Body_Paint",
-    "Object_5": "Camry_Trim_Interior",
-    "Object_6": "Camry_Wheels_Chassis",
-    "Object_9": "Camry_Glass_Lamps",
-    "Object_11": "Camry_Lamp_Lenses",
+    "Object_13": "Cemel_Body_Paint",
+    "Object_5": "Cemel_Trim_Interior",
+    "Object_6": "Cemel_Wheels_Chassis",
+    "Object_9": "Cemel_Glass_Lamps",
+    "Object_11": "Cemel_Lamp_Lenses",
 }
 for old, new in RENAME.items():
     bpy.data.objects[old].name = new
@@ -66,7 +69,7 @@ for old, new in RENAME.items():
 
 # The atlas textures of these meshes are stored upside-down relative to their UVs
 # (windows sampled the amber lens swatch, tyres the white swatch). Flip V.
-for name in ("Camry_Trim_Interior", "Camry_Wheels_Chassis", "Camry_Glass_Lamps", "Camry_Lamp_Lenses"):
+for name in ("Cemel_Trim_Interior", "Cemel_Wheels_Chassis", "Cemel_Glass_Lamps", "Cemel_Lamp_Lenses"):
     for uv in bpy.data.objects[name].data.uv_layers:
         a = np.zeros(len(uv.data) * 2)
         uv.data.foreach_get("uv", a)
@@ -76,7 +79,7 @@ for name in ("Camry_Trim_Interior", "Camry_Wheels_Chassis", "Camry_Glass_Lamps",
 # Wide EU-style front plate carrying the model author's banner -> replaced by a NY plate.
 bpy.data.objects.remove(bpy.data.objects["Object_7"])
 
-body = bpy.data.objects["Camry_Body_Paint"]
+body = bpy.data.objects["Cemel_Body_Paint"]
 
 # ---------------------------------------------------------------------------
 # 2. Collections / root
@@ -88,14 +91,14 @@ def collection(name, parent=None):
     return c
 
 
-taxi_col = collection("NYC_Taxi_Camry_2020")
+taxi_col = collection("NYC_Taxi_Cemel_2020")
 car_col = collection("Car", taxi_col)
 livery_col = collection("Taxi_Livery", taxi_col)
 topper_col = collection("Roof_Topper", taxi_col)
 plate_col = collection("License_Plates", taxi_col)
 studio_col = collection("Studio")
 
-root = bpy.data.objects.new("NYC_Taxi_Camry_2020", None)
+root = bpy.data.objects.new("NYC_Taxi_Cemel_2020", None)
 root.empty_display_type = "PLAIN_AXES"
 root.empty_display_size = 0.5
 taxi_col.objects.link(root)
@@ -467,7 +470,7 @@ for img in list(bpy.data.images):
         bpy.data.images.remove(img)
 
 bpy.ops.file.pack_all()
-GLB = os.path.join(ROOT, "NYC_Taxi_Camry_2020.glb")
+GLB = os.path.join(ROOT, "NYC_Taxi_Cemel_2020.glb")
 bpy.ops.object.select_all(action="DESELECT")
 for o in taxi_col.all_objects:
     o.select_set(True)

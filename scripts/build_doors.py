@@ -1,0 +1,400 @@
+"""Cut the four doors and the trunk lid out of the car meshes so each one opens on its own hinge.
+
+    python3 scripts/build_doors.py      # (bpy) edits NYC_Taxi_Cemel_2020.blend in place
+
+Run it once, after rebrand_cemel.py and before build_interior.py. It refuses to run twice.
+
+The source model merges each material into one mesh, so a door is scattered over the paint, trim,
+glass and chassis meshes. Every loose part (a connected piece of a mesh) that fits inside a door's
+volume moves to that door whole. Parts that span two doors, such as the window frame strips, are
+cut face by face at the shut line between the doors.
+
+Each opening part becomes an object whose origin is on its hinge axis:
+    Door_FL, Door_FR, Door_RL, Door_RR   rotate about their local Z axis (hinge line)
+    Trunk_Lid                            rotates about its local X axis
+A Limit Rotation constraint keeps them between closed (0) and fully open. Each also gets an
+"<name>_Open" action (closed -> open over 30 frames) that exports to glTF as a separate animation.
+"""
+import math
+import os
+
+import bpy  # noqa: I001  (bpy must be imported before bmesh when run as a module)
+import bmesh
+import numpy as np
+from mathutils import Matrix, Vector
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BLEND = os.path.join(ROOT, "NYC_Taxi_Cemel_2020.blend")
+GLB = os.path.join(ROOT, "NYC_Taxi_Cemel_2020.glb")
+
+if bpy.data.filepath != BLEND:
+    bpy.ops.wm.open_mainfile(filepath=BLEND)
+if "Door_FL" in bpy.data.objects:
+    raise SystemExit("Doors are already split in %s; nothing to do." % BLEND)
+
+scene = bpy.context.scene
+root = bpy.data.objects["NYC_Taxi_Cemel_2020"]
+car_col = bpy.data.collections["Car"]
+SOURCES = ["Cemel_Body_Paint", "Cemel_Trim_Interior", "Cemel_Wheels_Chassis", "Cemel_Glass_Lamps",
+           "Cemel_Lamp_Lenses"]
+
+# ---------------------------------------------------------------------------
+# 1. Opening volumes (car axes: -Y forward, +X = left/driver's side)
+# ---------------------------------------------------------------------------
+SHUT_Y = 0.19            # shut line between front and rear doors
+DOOR_Y = {"F": (-1.075, SHUT_Y), "R": (SHUT_Y, 1.285)}
+DOOR_Z = (0.24, 1.41)    # sill top to just under the roof rail
+TRUNK = dict(y=(1.90, 2.45), z=(0.665, 1.20), x=0.668)
+TOL = 0.012
+
+
+def door_inner_x(z):
+    """Inboard limit of the door: the door card at the waist, the glass line up to the roof rail."""
+    return 0.66 if z < 0.98 else 0.66 - (z - 0.98) * (0.66 - 0.565) / (1.41 - 0.98)
+
+
+PROFILE = {}   # "F"/"R" -> (z bins, y edge per bin, top of skin); filled from the door skins below
+
+
+def edge_y(fr, z):
+    """Free edge of a door at height z: front edge of the front door, rear edge of the rear door.
+    Below the waist it follows the door skin (the rear door's cut-out around the wheel arch);
+    above it, the window frame: the A-pillar line in front, the quarter-window slope at the back."""
+    zs, ys, top = PROFILE[fr]
+    # near the top of a skin its cross-section gets short, so the window frame takes over there
+    if fr == "F":
+        return float(np.interp(z, zs, ys)) if z <= 0.85 else DOOR_Y["F"][0]
+    if z <= 0.95:
+        return float(np.interp(z, zs, ys))
+    return min(float(ys.max()), 1.285 - (z - 1.10) * 1.083)   # quarter-window frame slope
+
+
+def door_mask(co, fr, loose=False):
+    """Which points (N x 3, all on one side of the car) lie inside door `fr` ("F" or "R")."""
+    t = TOL if loose else 0.0
+    x, y, z = np.abs(co[:, 0]), co[:, 1], co[:, 2]
+    inner = np.where(z < 0.98, 0.66, 0.66 - (z - 0.98) * (0.66 - 0.565) / (1.41 - 0.98))
+    ok = (z >= DOOR_Z[0] - t) & (z <= DOOR_Z[1] + t) & (x >= inner - t)
+    edge = np.array([edge_y(fr, zz) for zz in z])
+    if fr == "F":
+        # the front door's frame carries the black B-pillar applique, which reaches past the shut line
+        return ok & (y >= edge - 0.015 - t) & (y <= SHUT_Y + (0.10 if loose else 0.0))
+    return ok & (y >= SHUT_Y - (0.04 if loose else 0.0)) & (y <= edge + 0.012 + t)
+
+
+def door_of_point(p, loose=False):
+    co = np.array([p[:]])
+    side = "L" if p[0] > 0 else "R"
+    for fr in ("F", "R"):
+        if door_mask(co, fr, loose)[0]:
+            return fr + side
+    return None
+
+
+def in_trunk(p, loose=False):
+    t = TOL if loose else 0
+    x, y, z = p
+    return (TRUNK["y"][0] - t <= y <= TRUNK["y"][1] + t and TRUNK["z"][0] - t <= z <= TRUNK["z"][1] + t
+            and abs(x) <= TRUNK["x"] + t)
+
+
+WHEELS = [(-1.44, 0.33), (1.36, 0.33)]   # (y, z) of the wheel centres
+
+
+def near_wheel(co):
+    """Rims, tyres and arch liners come within 0.3 m of a wheel centre; door skins never do."""
+    return min(np.hypot(co[:, 1] - wy, co[:, 2] - wz).min() for wy, wz in WHEELS) < 0.30
+
+
+def part_owner(co):
+    """Owner that holds every vertex of a loose part, else None."""
+    mn, mx = co.min(0), co.max(0)
+    corners = [(a, b, c) for a in (mn[0], mx[0]) for b in (mn[1], mx[1]) for c in (mn[2], mx[2])]
+    if all(in_trunk(c, loose=True) for c in corners):
+        return "Trunk"
+    if mn[0] < 0 < mx[0] or near_wheel(co):
+        return None
+    side = "L" if mn[0] > 0 else "R"
+    for fr in ("F", "R"):
+        if door_mask(co, fr, loose=True).all():
+            return fr + side
+    return None
+
+
+def split_candidate(src_name, mn, mx):
+    """Parts cut face by face: one-sided strips and trim panels running through the door band.
+    Parts reaching the ground (wheels, arch liners, underbody) and parts crossing the car's centre
+    line (dash, floor tub, headliner) are never cut. Paint parts are only cut if they are upper
+    window-frame strips; the rest of the paint shell is already split into panels."""
+    if mn[0] < 0 < mx[0] or mn[2] < 0.2:
+        return False
+    if max(abs(mn[0]), abs(mx[0])) < 0.66:
+        return False
+    if mx[1] < DOOR_Y["F"][0] or mn[1] > DOOR_Y["R"][1]:
+        return False
+    if src_name == "Cemel_Body_Paint":
+        return mn[2] > 0.9 and mn[1] < SHUT_Y < mx[1]
+    return True
+
+
+# ---------------------------------------------------------------------------
+# 2. Split every source mesh into body / door / trunk pieces
+# ---------------------------------------------------------------------------
+OWNERS = ["FL", "FR", "RL", "RR", "Trunk"]
+pieces = {o: [] for o in OWNERS}      # owner -> list of new mesh objects
+
+
+def loose_parts(bm):
+    bm.verts.ensure_lookup_table()
+    seen, parts = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        stack, comp = [v], []
+        seen.add(v.index)
+        while stack:
+            a = stack.pop()
+            comp.append(a)
+            for e in a.link_edges:
+                b = e.other_vert(a)
+                if b.index not in seen:
+                    seen.add(b.index)
+                    stack.append(b)
+        parts.append(comp)
+    return parts
+
+
+def door_profiles():
+    """Edge of each door skin per 1 cm of height (left side; the car is symmetric)."""
+    bm = bmesh.new()
+    bm.from_mesh(bpy.data.objects["Cemel_Body_Paint"].data)
+    skins = {}
+    for comp in loose_parts(bm):
+        co = np.array([v.co[:] for v in comp])
+        mn, mx = co.min(0), co.max(0)
+        if mn[0] < 0.7 or mx[2] - mn[2] < 0.6:
+            continue
+        for fr, (y0, y1) in DOOR_Y.items():
+            if mn[1] > y0 - 0.05 and mx[1] < y1 + 0.05 and (fr not in skins or len(co) > len(skins[fr][0])):
+                edges = {e for v in comp for e in v.link_edges}
+                seg = np.array([(e.verts[0].co[1], e.verts[0].co[2], e.verts[1].co[1], e.verts[1].co[2])
+                                for e in edges])
+                skins[fr] = (co, seg)
+    bm.free()
+    for fr, (co, seg) in skins.items():
+        # exact cross-section of the skin at each height: where its edges cross the plane z = const
+        zs = np.arange(co[:, 2].min(), co[:, 2].max() + 0.005, 0.005)
+        y1, z1, y2, z2 = seg.T
+        ys = []
+        for z in zs:
+            m = (np.minimum(z1, z2) <= z) & (np.maximum(z1, z2) >= z) & (z1 != z2)
+            t = (z - z1[m]) / (z2[m] - z1[m])
+            yy = np.concatenate([y1[m] + t * (y2[m] - y1[m]), co[np.abs(co[:, 2] - z) < 0.004, 1]])
+            ys.append(np.nan if not len(yy) else (yy.min() if fr == "F" else yy.max()))
+        ys = np.array(ys)
+        good = ~np.isnan(ys)
+        ys = np.interp(zs, zs[good], ys[good])
+        PROFILE[fr] = (zs, ys, co[:, 2].max())
+        print("door skin %s: z %.3f..%.3f, edge y %.3f..%.3f" % (fr, zs[0], zs[-1], ys.min(), ys.max()))
+
+
+door_profiles()
+
+
+def cut_planes():
+    """Planes along every door boundary, so no face straddles one after cutting."""
+    planes = [((0, y, 0), (0, 1, 0)) for y in (DOOR_Y["F"][0], SHUT_Y, DOOR_Y["R"][1])]
+    planes += [((0, 0, z), (0, 0, 1)) for z in DOOR_Z]
+    for s_ in (1, -1):
+        planes.append(((s_ * 0.66, 0, 0), (1, 0, 0)))
+        planes.append(((s_ * 0.66, 0, 0.98), (0.43, 0, s_ * (0.66 - 0.565))))
+    # the free edge of each door as a polyline in the side view (planes contain the X axis)
+    for fr, margin in (("F", -0.015), ("R", 0.012)):
+        zs = np.linspace(DOOR_Z[0], DOOR_Z[1], 25)
+        ys = [edge_y(fr, z) + margin for z in zs]
+        for i in range(len(zs) - 1):
+            dy, dz = ys[i + 1] - ys[i], zs[i + 1] - zs[i]
+            planes.append(((0, ys[i], zs[i]), (0, dz, -dy)))
+    return planes
+
+
+CODE = {o: i + 1 for i, o in enumerate(OWNERS)}      # 0 = stays on the body
+CANDIDATE = 99
+report = {}
+for src_name in SOURCES:
+    src = bpy.data.objects[src_name]
+    bm = bmesh.new()
+    bm.from_mesh(src.data)
+    tag = bm.faces.layers.int.new("opening")
+    cand_faces = set()
+    for comp in loose_parts(bm):
+        co = np.array([v.co[:] for v in comp])
+        mn, mx = co.min(0), co.max(0)
+        faces = {f for v in comp for f in v.link_faces}
+        owner = part_owner(co)
+        if owner:
+            for f in faces:
+                f[tag] = CODE[owner]
+        elif not near_wheel(co) and split_candidate(src_name, mn, mx):
+            for f in faces:
+                f[tag] = CANDIDATE
+            cand_faces |= faces
+    if cand_faces:
+        geom = list(cand_faces) + list({e for f in cand_faces for e in f.edges}) + \
+            list({v for f in cand_faces for v in f.verts})
+        for co_, no_ in cut_planes():
+            res = bmesh.ops.bisect_plane(bm, geom=geom, plane_co=co_, plane_no=Vector(no_).normalized(),
+                                         dist=1e-5)
+            geom = [g for g in res["geom"] if g.is_valid]
+        for f in bm.faces:
+            if f[tag] == CANDIDATE:
+                o = door_of_point(f.calc_center_median())
+                f[tag] = CODE[o] if o else 0
+    counts = {o: sum(1 for f in bm.faces if f[tag] == CODE[o]) for o in OWNERS}
+    report[src_name] = counts
+    bm.to_mesh(src.data)
+    bm.free()
+
+    for owner in OWNERS:
+        if not counts[owner]:
+            continue
+        me = src.data.copy()
+        me.name = f"{owner}_{src_name}"
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        tag = bm.faces.layers.int["opening"]
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[tag] != CODE[owner]], context="FACES")
+        bm.faces.layers.int.remove(tag)
+        bm.to_mesh(me)
+        bm.free()
+        pieces[owner].append(bpy.data.objects.new(me.name, me))
+    bm = bmesh.new()
+    bm.from_mesh(src.data)
+    tag = bm.faces.layers.int["opening"]
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[tag] != 0], context="FACES")
+    bm.faces.layers.int.remove(tag)
+    bm.to_mesh(src.data)
+    bm.free()
+
+for k, v in report.items():
+    print(k, v)
+
+# ---------------------------------------------------------------------------
+# 3. One object per opening, origin on the hinge
+# ---------------------------------------------------------------------------
+open_col = bpy.data.collections.new("Doors_Trunk")
+bpy.data.collections["NYC_Taxi_Cemel_2020"].children.link(open_col)
+NAMES = {"FL": "Door_FL", "FR": "Door_FR", "RL": "Door_RL", "RR": "Door_RR", "Trunk": "Trunk_Lid"}
+OPEN_DEG = {"F": 65.0, "R": 70.0, "Trunk": 72.0}
+
+
+def join(owner):
+    obs = pieces[owner]
+    for o in obs:
+        open_col.objects.link(o)
+    with bpy.context.temp_override(active_object=obs[0], selected_editable_objects=obs,
+                                   selected_objects=obs):
+        bpy.ops.object.join()
+    ob = obs[0]
+    ob.name = ob.data.name = NAMES[owner]
+    return ob
+
+
+def world_verts(ob):
+    return np.array([v.co[:] for v in ob.data.vertices])
+
+
+def skin_verts(owner):
+    me = [o for o in pieces[owner] if o.name.endswith("Cemel_Body_Paint")][0].data
+    return np.array([v.co[:] for v in me.vertices])
+
+
+hinges = {}
+for owner in ("FL", "FR", "RL", "RR"):
+    sk = skin_verts(owner)
+    sign = 1 if owner[1] == "L" else -1
+    y0 = sk[:, 1].min()
+    front = sk[sk[:, 1] < y0 + 0.05]
+    # hinge line: 2 cm behind the leading edge, 1.5 cm inside the skin, at mid door height
+    hinges[owner] = Vector((sign * (np.abs(front[:, 0]).mean() - 0.015), y0 + 0.02,
+                            (front[:, 2].min() + front[:, 2].max()) / 2))
+lid = skin_verts("Trunk")
+top = lid[lid[:, 2] > 1.05]
+hinges["Trunk"] = Vector((0.0, top[:, 1].min() - 0.02, top[:, 2][top[:, 1] < top[:, 1].min() + 0.03].mean() - 0.02))
+
+openings = {}
+for owner in OWNERS:
+    ob = join(owner)
+    pivot = hinges[owner]
+    ob.data.transform(Matrix.Translation(-pivot))
+    ob.location = pivot
+    ob.parent = root
+    ob.matrix_parent_inverse = root.matrix_world.inverted()
+    openings[owner] = ob
+
+bpy.context.view_layer.update()     # hinge objects' world matrices are needed for parenting below
+
+# decals, plate and bracket that sit on a moving panel follow it
+FOLLOW = {
+    "Decal_Logo_FrontDoor_L": "FL", "Decal_Logo_FrontDoor_R": "FR",
+    "Decal_RateOfFare_RearDoor_L": "RL", "Decal_RateOfFare_RearDoor_R": "RR",
+    "Decal_Medallion_Trunk": "Trunk", "Decal_Logo_Trunk": "Trunk",
+    "Plate_Rear": "Trunk", "Plate_Bracket_Rear": "Trunk",
+}
+for name, owner in FOLLOW.items():
+    ob = bpy.data.objects[name]
+    ob.parent = openings[owner]
+    ob.matrix_parent_inverse = openings[owner].matrix_world.inverted()
+
+# ---------------------------------------------------------------------------
+# 4. Hinges: an "open" slider (0 = shut, 1 = fully open) drives the hinge angle in Blender, and an
+#    "<name>_Open" action on a muted NLA track exports to glTF as that part's own animation.
+# ---------------------------------------------------------------------------
+for owner, ob in openings.items():
+    if owner == "Trunk":
+        axis, angle = 0, math.radians(OPEN_DEG["Trunk"])           # lid swings up about X
+    else:
+        axis = 2
+        angle = math.radians(OPEN_DEG[owner[0]]) * (-1 if owner[1] == "L" else 1)  # rear edge swings out
+    ob.lock_rotation = [True, True, True]
+    ob.lock_location = (True, True, True)
+    ob["open"] = 0.0
+    ui = ob.id_properties_ui("open")
+    ui.update(min=0.0, max=1.0, soft_min=0.0, soft_max=1.0, step=5,
+              description="0 = shut, 1 = fully open")
+    ob["open_axis"] = "XYZ"[axis]
+    ob["open_angle_deg"] = round(math.degrees(angle), 1)
+
+    ob.rotation_euler = (0, 0, 0)
+    ob.keyframe_insert("rotation_euler", index=axis, frame=1)
+    ob.rotation_euler[axis] = angle
+    ob.keyframe_insert("rotation_euler", index=axis, frame=30)
+    ob.rotation_euler[axis] = 0.0
+    act = ob.animation_data.action
+    act.name = f"{ob.name}_Open"
+    act.use_fake_user = True
+    track = ob.animation_data.nla_tracks.new()
+    track.name = act.name
+    track.strips.new(act.name, 1, act)
+    track.mute = True                  # kept for export only; the driver below poses the part
+    ob.animation_data.action = None
+
+    fc = ob.driver_add("rotation_euler", axis)
+    drv = fc.driver
+    drv.type = "SCRIPTED"
+    var = drv.variables.new()
+    var.name = "open"
+    var.targets[0].id = ob
+    var.targets[0].data_path = '["open"]'
+    drv.expression = "min(max(open, 0), 1) * %.6f" % angle
+scene.frame_start, scene.frame_end = 1, 30
+scene.frame_set(1)
+
+for owner, ob in openings.items():
+    print("%-9s hinge %s  open %s %.0f deg  verts %d" % (ob.name, tuple(round(c, 3) for c in hinges[owner]),
+          ob["open_axis"], ob["open_angle_deg"], len(ob.data.vertices)))
+
+bpy.ops.wm.save_as_mainfile(filepath=BLEND, compress=True)
+if os.path.exists(BLEND + "1"):
+    os.remove(BLEND + "1")
+print("Saved", BLEND)

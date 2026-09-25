@@ -1,8 +1,8 @@
-"""Fit out the taxi's cabin the way NYC yellow-cab Camrys are equipped.
+"""Fit out the taxi's cabin the way NYC yellow-cab Cemels are equipped.
 
     python3 scripts/make_interior_textures.py   # (Pillow) interior textures -> textures/
     python3 scripts/build_interior.py           # (bpy) adds the Taxi_Interior collection to
-                                                #       NYC_Taxi_Camry_2020.blend and re-exports the .glb
+                                                #       NYC_Taxi_Cemel_2020.blend and re-exports the .glb
 
 Run it after build_taxi.py. It is safe to re-run: the Taxi_Interior collection is rebuilt from scratch.
 
@@ -26,15 +26,15 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BLEND = os.path.join(ROOT, "NYC_Taxi_Camry_2020.blend")
-GLB = os.path.join(ROOT, "NYC_Taxi_Camry_2020.glb")
+BLEND = os.path.join(ROOT, "NYC_Taxi_Cemel_2020.blend")
+GLB = os.path.join(ROOT, "NYC_Taxi_Cemel_2020.glb")
 TEX = os.path.join(ROOT, "textures")
 
 if bpy.data.filepath != BLEND:
     bpy.ops.wm.open_mainfile(filepath=BLEND)
 scene = bpy.context.scene
-root = bpy.data.objects["NYC_Taxi_Camry_2020"]
-taxi_col = bpy.data.collections["NYC_Taxi_Camry_2020"]
+root = bpy.data.objects["NYC_Taxi_Cemel_2020"]
+taxi_col = bpy.data.collections["NYC_Taxi_Cemel_2020"]
 
 # Car axes: -Y is forward, +X is the driver's (left) side, z = 0 is the ground.
 Z = Vector((0, 0, 1))
@@ -56,9 +56,11 @@ else:
     taxi_col.children.link(col)
 
 
-def add(ob):
+def add(ob, parent=None):
     col.objects.link(ob)
-    ob.parent = root
+    ob.parent = parent or root
+    if parent:
+        ob.matrix_parent_inverse = parent.matrix_world.inverted()
     return ob
 
 
@@ -133,12 +135,58 @@ for m in (buckle_mat, smoke_mat):
 # ---------------------------------------------------------------------------
 # 2. Geometry helpers
 # ---------------------------------------------------------------------------
+FLOOR_Z = 0.33           # footwell floor (the tub is lowered to this below)
+SILL_Z = 0.40            # inner edge of the floor along the door sills
+SEAT_Z = 0.58            # top of the seat bases = underside of the cushions
+
+
+def lower_floor():
+    """The source tub is a flat sheet at seat height (z ~0.56-0.61) from the dash to the rear seat.
+    Drop it to footwell height, keeping a raised strip along the sills. Absolute heights, so a
+    second run changes nothing."""
+    me = bpy.data.objects["Cemel_Trim_Interior"].data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    seen = set()
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        stack, comp = [v], []
+        seen.add(v.index)
+        while stack:
+            a = stack.pop()
+            comp.append(a)
+            for e in a.link_edges:
+                b = e.other_vert(a)
+                if b.index not in seen:
+                    seen.add(b.index)
+                    stack.append(b)
+        co = np.array([c.co[:] for c in comp])
+        mn, mx = co.min(0), co.max(0)
+        if mn[0] < -0.8 and mx[0] > 0.8 and mn[1] < -0.85 and mx[1] > 1.3 and 0.5 < mn[2] < 0.6 and mx[2] < 0.9:
+            for c in comp:
+                if c.co.y < 0.95 and (0.545 < c.co.z < 0.615 or (abs(c.co.x) > 0.74 and 0.615 <= c.co.z < 0.72)):
+                    c.co.z = SILL_Z if abs(c.co.x) > 0.74 else FLOOR_Z
+    bm.to_mesh(me)
+    bm.free()
+
+
+lower_floor()
+openings = [o for o in bpy.data.collections["Doors_Trunk"].objects if o.type == "MESH"]
 bm_car = bmesh.new()
-for n in ("Camry_Body_Paint", "Camry_Trim_Interior", "Camry_Glass_Lamps"):
-    bm_car.from_mesh(bpy.data.objects[n].data)
+for ob in [bpy.data.objects[n] for n in ("Cemel_Body_Paint", "Cemel_Trim_Interior", "Cemel_Glass_Lamps")] + openings:
+    tmp = bmesh.new()
+    tmp.from_mesh(ob.data)
+    tmp.transform(ob.matrix_world)
+    me_tmp = bpy.data.meshes.new("_tmp")
+    tmp.to_mesh(me_tmp)
+    tmp.free()
+    bm_car.from_mesh(me_tmp)
+    bpy.data.meshes.remove(me_tmp)
 car_bvh = BVHTree.FromBMesh(bm_car)
 bm_trim = bmesh.new()
-bm_trim.from_mesh(bpy.data.objects["Camry_Trim_Interior"].data)
+bm_trim.from_mesh(bpy.data.objects["Cemel_Trim_Interior"].data)
 trim_bvh = BVHTree.FromBMesh(bm_trim)
 
 
@@ -201,34 +249,197 @@ def device(name, center, size, normal, housing_mat, face_mat, face_wh, face_shif
 
 
 # ---------------------------------------------------------------------------
-# 3. Seats and console
+# 3. Floor, pedals, seats, belts and console
 # ---------------------------------------------------------------------------
-# The source cabin is a tub whose floor sits at seat-base height (z ~0.58); the seat backs are
-# separate shells. Cushions go on the tub, overlapping the foot of each back.
-FLOOR_Z = cast((0.38, 0.0, 1.2), -Z, trim_bvh).z
+carpet = material("Interior_Carpet_Charcoal", (0.022, 0.022, 0.024, 1), rough=1.0)
+rubber = material("Interior_Rubber_Mat", (0.008, 0.008, 0.009, 1), rough=0.75)
+webbing = material("Interior_Seat_Belt_Webbing", (0.014, 0.014, 0.016, 1), rough=0.7)
+steel = material("Interior_Dark_Steel", (0.05, 0.05, 0.055, 1), rough=0.4, metal=1.0)
+
+
+def sheet(name, pts, faces, mat, thickness=0.006, parent=None):
+    """A thin panel from explicit corner points (quads), solidified towards the cabin."""
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([Vector(p)[:] for p in pts], [], faces)
+    me.materials.append(mat)
+    ob = bpy.data.objects.new(name, me)
+    sol = ob.modifiers.new("Solidify", "SOLIDIFY")
+    sol.thickness = thickness
+    return add(ob, parent)
+
+
+def strap(name, p0, p1, width, mat, thick=0.004, face=Vector((0, 1, 0))):
+    """A flat strap (seat-belt webbing) from p0 to p1, its flat side facing roughly `face`."""
+    p0, p1 = Vector(p0), Vector(p1)
+    d = (p1 - p0).normalized()
+    side = d.cross(face).normalized()
+    n = side.cross(d)
+    rot = Matrix((side, n, d)).transposed().to_euler()
+    return box(name, (width, thick, (p1 - p0).length), (p0 + p1) / 2, mat, rot=rot)
+
+
+# Toe board and kick panels close the open space under the dash down to the new floor.
+TOE = [(-0.90, FLOOR_Z), (-1.10, 0.66), (-1.13, 0.95)]      # (y, z) from floor to under the dash
+TW = 0.73
+pts = [(x, y, z) for (y, z) in TOE for x in (-TW, TW)]
+sheet("Floor_Toe_Board", pts, [(0, 1, 3, 2), (2, 3, 5, 4)], carpet, 0.01)
+for s_ in (-1, 1):
+    sheet(f"Floor_Kick_Panel_{'L' if s_ > 0 else 'R'}",
+          [(s_ * TW, -1.13, FLOOR_Z), (s_ * TW, -0.88, FLOOR_Z), (s_ * TW, -0.88, 0.95), (s_ * TW, -1.13, 0.95)],
+          [(0, 1, 2, 3)], trim, 0.01)
+
+# Pedals on the driver's side (+X): accelerator right of the brake, footrest far left.
+toe_dir = Vector((0, TOE[1][0] - TOE[0][0], TOE[1][1] - TOE[0][1])).normalized()
+toe_n = Vector((0, -toe_dir.z, toe_dir.y)) * -1           # points up and back, into the cabin
+if toe_n.y < 0:
+    toe_n = -toe_n
+
+
+def on_toe(t, x, lift):
+    y = TOE[0][0] + (TOE[1][0] - TOE[0][0]) * t
+    z = TOE[0][1] + (TOE[1][1] - TOE[0][1]) * t
+    return Vector((x, y, z)) + toe_n * lift
+
+
+toe_rot = Matrix((Vector((1, 0, 0)), toe_n, toe_dir)).transposed().to_euler()
+box("Pedal_Accelerator", (0.06, 0.018, 0.21), on_toe(0.45, 0.25, 0.035), rubber, bevel=0.008, rot=toe_rot)
+box("Pedal_Brake", (0.11, 0.022, 0.075), on_toe(0.40, 0.43, 0.13), rubber, bevel=0.01, rot=toe_rot)
+strap("Pedal_Brake_Arm", on_toe(0.40, 0.43, 0.13), (0.43, -0.93, 0.93), 0.025, steel, thick=0.012)
+box("Pedal_Footrest", (0.08, 0.015, 0.22), on_toe(0.5, 0.62, 0.02), rubber, bevel=0.006, rot=toe_rot)
+
+# Seat bases (the source seat backs float above the new floor) and rails
+for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
+    box(f"Seat_Base_{tag}", (0.44, 0.58, SEAT_Z - FLOOR_Z - 0.04), (x, -0.08, (SEAT_Z + FLOOR_Z + 0.04) / 2),
+        trim, bevel=0.02)
+    for dx in (-0.17, 0.17):
+        box(f"Seat_Rail_{tag}_{'O' if dx * x > 0 else 'I'}", (0.035, 0.66, 0.035),
+            (x + dx, -0.10, FLOOR_Z + 0.0175), steel, bevel=0.004)
+
+# Cushions on the bases, overlapping the foot of each source seat back.
 CUSH_T = 0.075
 for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
-    box(f"Seat_Cushion_{tag}", (0.50, 0.52, CUSH_T), (x, -0.16, FLOOR_Z + CUSH_T / 2), cloth,
+    box(f"Seat_Cushion_{tag}", (0.50, 0.52, CUSH_T), (x, -0.16, SEAT_Z + CUSH_T / 2), cloth,
         bevel=0.03, segments=4)
     for s in (-1, 1):  # side bolsters
         box(f"Seat_Bolster_{tag}_{'O' if s * x > 0 else 'I'}", (0.07, 0.46, 0.035),
-            (x + s * 0.215, -0.17, FLOOR_Z + CUSH_T + 0.012), cloth, bevel=0.016, segments=4)
+            (x + s * 0.215, -0.17, SEAT_Z + CUSH_T + 0.012), cloth, bevel=0.016, segments=4)
+    # front belt: stowed down the B-pillar from the D-ring; buckle stalk on the console side
+    xo = math.copysign(1, x)
+    box(f"Seat_Belt_DRing_{tag}", (0.012, 0.03, 0.06), (xo * 0.665, 0.235, 1.22), black_plastic, bevel=0.004)
+    strap(f"Seat_Belt_{tag}", (xo * 0.66, 0.225, 1.20), (xo * 0.715, 0.225, SEAT_Z - 0.05), 0.048, webbing,
+          face=Vector((-xo, 0, 0)))
+    box(f"Seat_Belt_Buckle_{tag}", (0.03, 0.022, 0.075), (xo * 0.13, 0.04, SEAT_Z + 0.07), black_plastic,
+        bevel=0.006, rot=(math.radians(15), 0, 0))
 
-rear_hw = min(abs(cast((0, 0.7, FLOOR_Z + 0.12), (s, 0, 0)).x) for s in (-1, 1)) - 0.02
+rear_hw = min(abs(cast((0, 0.7, SEAT_Z + 0.12), (s, 0, 0)).x) for s in (-1, 1)) - 0.02
 REAR_Y0, REAR_Y1 = 0.46, 0.96
+box("Seat_Base_Rear", (2 * rear_hw - 0.04, REAR_Y1 - REAR_Y0 - 0.02, SEAT_Z - FLOOR_Z),
+    (0, (REAR_Y0 + REAR_Y1) / 2 + 0.01, (SEAT_Z + FLOOR_Z) / 2), cloth, bevel=0.02)
 box("Seat_Cushion_Rear", (2 * rear_hw, REAR_Y1 - REAR_Y0, CUSH_T + 0.01),
-    (0, (REAR_Y0 + REAR_Y1) / 2, FLOOR_Z + (CUSH_T + 0.01) / 2), cloth, bevel=0.035, segments=4)
+    (0, (REAR_Y0 + REAR_Y1) / 2, SEAT_Z + (CUSH_T + 0.01) / 2), cloth, bevel=0.035, segments=4)
 for x in (-0.43, 0.43):  # outboard seat contours
     box(f"Seat_Rear_Bolster_{'L' if x > 0 else 'R'}", (0.05, 0.40, 0.022),
-        (x + math.copysign(0.2, x), 0.73, FLOOR_Z + CUSH_T + 0.014), cloth, bevel=0.01)
+        (x + math.copysign(0.2, x), 0.73, SEAT_Z + CUSH_T + 0.014), cloth, bevel=0.01)
 for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckles and latches
-    box(f"Seat_Belt_Buckle_{i}", (0.03, 0.02, 0.07), (x, REAR_Y1 - 0.03, FLOOR_Z + CUSH_T + 0.03),
+    box(f"Seat_Belt_Buckle_Rear_{i}", (0.03, 0.02, 0.07), (x, REAR_Y1 - 0.03, SEAT_Z + CUSH_T + 0.03),
         black_plastic, bevel=0.006, rot=(math.radians(-20), 0, 0))
+# rear belts come out of the parcel shelf and lie down the seat back
+for x, tag in ((0.47, "L"), (0.0, "C"), (-0.47, "R")):
+    top = cast((x, 1.2, 1.4), (0, 0.35, -1), trim_bvh) or Vector((x, 1.30, 1.16))
+    strap(f"Seat_Belt_Rear_{tag}", top + Vector((0, -0.01, 0.005)),
+          (x * 1.12, REAR_Y1 - 0.04, SEAT_Z + CUSH_T + 0.02), 0.048, webbing, face=Vector((0, -1, 0.6)))
+    box(f"Seat_Belt_Guide_Rear_{tag}", (0.07, 0.03, 0.015), top + Vector((0, 0, 0.004)), black_plastic,
+        bevel=0.004)
 
-box("Console_Base", (0.18, 0.86, 0.16), (0, -0.44, FLOOR_Z + 0.08), trim, bevel=0.02)
-box("Console_Armrest", (0.19, 0.30, 0.05), (0, -0.10, FLOOR_Z + 0.185), cloth, bevel=0.018, segments=4)
-box("Console_Shifter_Boot", (0.07, 0.10, 0.04), (0, -0.66, FLOOR_Z + 0.18), trim, bevel=0.015)
-box("Console_Shifter_Knob", (0.04, 0.05, 0.10), (0, -0.66, FLOOR_Z + 0.24), trim, bevel=0.018, segments=4)
+# Rubber floor mats
+for x0, x1, tag in ((0.12, 0.70, "Driver"), (-0.70, -0.12, "Passenger")):
+    box(f"Floor_Mat_{tag}", (x1 - x0, 0.50, 0.008), ((x0 + x1) / 2, -0.64, FLOOR_Z + 0.004), rubber,
+        bevel=0.004)
+box("Floor_Mat_Rear", (2 * rear_hw - 0.1, 0.10, 0.008), (0, (0.36 + REAR_Y0) / 2, FLOOR_Z + 0.004), rubber,
+    bevel=0.003)
+
+box("Console_Base", (0.18, 0.86, 0.74 - FLOOR_Z), (0, -0.44, (0.74 + FLOOR_Z) / 2), trim, bevel=0.02)
+box("Console_Armrest", (0.19, 0.30, 0.05), (0, -0.10, SEAT_Z + 0.185), cloth, bevel=0.018, segments=4)
+box("Console_Shifter_Boot", (0.07, 0.10, 0.04), (0, -0.66, SEAT_Z + 0.18), trim, bevel=0.015)
+box("Console_Shifter_Knob", (0.04, 0.05, 0.10), (0, -0.66, SEAT_Z + 0.24), trim, bevel=0.018, segments=4)
+
+# Lower door cards: the source door trim stops at the old floor height, which leaves the inside of
+# the painted door skin showing once the floor is lowered. A panel is ray-cast onto each door's
+# inner skin (door closed) and parented to the door, so it swings with it.
+for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Door_RR")]:
+    sgn = 1 if door.name.endswith("L") else -1
+    bm_d = bmesh.new()
+    bm_d.from_mesh(door.data)
+    bm_d.transform(door.matrix_world)
+    d_bvh = BVHTree.FromBMesh(bm_d)
+    dy = np.array([v.co.y for v in bm_d.verts if 0.30 < v.co.z < 0.62 and abs(v.co.x) > 0.78])
+    bm_d.free()
+    ys = np.linspace(dy.min() + 0.035, dy.max() - 0.035, 24)
+    zs = np.linspace(FLOOR_Z + 0.07, 0.64, 10)
+    grid = {}
+    for j, z in enumerate(zs):
+        for i, y in enumerate(ys):
+            h = d_bvh.ray_cast(Vector((sgn * 0.3, y, z)), Vector((sgn, 0, 0)), 1.0)[0]
+            grid[i, j] = h - Vector((sgn * 0.012, 0, 0)) if h is not None and abs(h.x) > 0.72 else None
+    vi, verts, faces = {}, [], []
+    for k, p_ in grid.items():
+        if p_ is not None:
+            vi[k] = len(verts)
+            verts.append(p_)
+    for (i, j) in grid:
+        q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+        if all(k in vi for k in q):
+            faces.append(tuple(vi[k] for k in (q if sgn < 0 else q[::-1])))
+    card = sheet(f"{door.name}_Lower_Card", verts, faces, trim, 0.008, parent=door)
+    card.data.shade_smooth()
+    if door.name.startswith("Door_F"):   # speaker grille low in the front door cards
+        c = Vector((sgn * 0.0, (ys[0] + ys[-1]) / 2 - 0.12, 0.47))
+        h = d_bvh.ray_cast(Vector((sgn * 0.3, c.y, c.z)), Vector((sgn, 0, 0)), 1.0)[0]
+        if h is not None:
+            g = box(f"{door.name}_Speaker_Grille", (0.012, 0.17, 0.17), h - Vector((sgn * 0.024, 0, 0)),
+                    black_plastic, bevel=0.03, segments=6)
+            g.parent = door
+            g.matrix_parent_inverse = door.matrix_world.inverted()
+
+# ---------------------------------------------------------------------------
+# 3b. Trunk: carpeted liner, wheel-arch humps, load floor; lid liner rides with the lid
+# ---------------------------------------------------------------------------
+TY0, TY1, TX, TZ = 1.47, 2.25, 0.57, 0.48
+tp = [(-TX, TY0, TZ), (TX, TY0, TZ), (TX, TY1, TZ), (-TX, TY1, TZ),          # floor 0-3
+      (-TX, TY0, 1.02), (TX, TY0, 1.02), (TX, TY1, 0.70), (-TX, TY1, 0.70),  # tops 4-7
+      (-TX, TY1, 0.98), (TX, TY1, 0.98)]                                     # side-wall rear tops
+sheet("Trunk_Liner", tp, [(0, 1, 2, 3), (1, 0, 4, 5), (3, 2, 6, 7), (0, 3, 8, 4), (2, 1, 5, 9)], carpet, 0.008)
+for s_ in (-1, 1):
+    box(f"Trunk_Wheel_Arch_{'L' if s_ > 0 else 'R'}", (0.12, 0.30, 0.24),
+        (s_ * (TX - 0.06), TY0 + 0.15, TZ + 0.12), carpet, bevel=0.04, segments=4)
+box("Trunk_Load_Floor", (2 * TX - 0.26, TY1 - TY0 - 0.04, 0.012), (0, (TY0 + TY1) / 2, TZ + 0.02), carpet,
+    bevel=0.004)
+box("Trunk_Load_Floor_Handle", (0.14, 0.03, 0.006), (0, TY1 - 0.06, TZ + 0.029), black_plastic, bevel=0.002)
+box("Trunk_Striker", (0.05, 0.02, 0.03), (0, TY1 + 0.02, 0.72), steel, bevel=0.004)
+
+lid = bpy.data.objects["Trunk_Lid"]
+bm_lid = bmesh.new()
+bm_lid.from_mesh(lid.data)
+bm_lid.transform(lid.matrix_world)
+lid_bvh = BVHTree.FromBMesh(bm_lid)
+xs = np.linspace(-0.56, 0.56, 23)
+ys = np.linspace(1.97, 2.27, 11)
+grid = {}
+for j, y in enumerate(ys):
+    for i, x in enumerate(xs):
+        h = lid_bvh.ray_cast(Vector((x, y, 0.85)), Z, 0.5)[0]
+        grid[i, j] = h - Z * 0.018 if h is not None else None
+vi, verts, faces = {}, [], []
+for (i, j), p in grid.items():
+    if p is not None:
+        vi[i, j] = len(verts)
+        verts.append(p)
+for (i, j) in grid:
+    q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+    if all(k in vi for k in q):
+        faces.append(tuple(vi[k] for k in q))
+bm_lid.free()
+sheet("Trunk_Lid_Liner", verts, faces, carpet, 0.006, parent=lid).data.shade_smooth()
 
 # ---------------------------------------------------------------------------
 # 4. Partition: traced from the cabin cross-section just behind the front head restraints

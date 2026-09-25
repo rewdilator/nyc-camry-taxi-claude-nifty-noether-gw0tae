@@ -1,8 +1,10 @@
-"""Render Cycles (CPU) preview images of NYC_Taxi_Camry_2020.blend into ./renders/.
+"""Render Cycles (CPU) preview images of NYC_Taxi_Cemel_2020.blend into ./renders/.
 
     python3 scripts/render_previews.py [samples] [view,view,...]
 Views: fl side rr rside door rdoor rear front top
 Interior views (lit by a temporary cabin light): cabin tv dash
+Add "_open" to any view to render it with all four doors and the trunk open (e.g. fl_open).
+Output: renders/preview_<view>.png
 """
 import math
 import os
@@ -12,7 +14,7 @@ import bpy
 from mathutils import Vector
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-bpy.ops.wm.open_mainfile(filepath=os.path.join(ROOT, "NYC_Taxi_Camry_2020.blend"))
+bpy.ops.wm.open_mainfile(filepath=os.path.join(ROOT, "NYC_Taxi_Cemel_2020.blend"))
 
 samples = int(sys.argv[1]) if len(sys.argv) > 1 else 48
 views = sys.argv[2].split(",") if len(sys.argv) > 2 else ["fl", "side", "rr", "rear"]
@@ -35,6 +37,7 @@ VIEWS = {
     "rear": (90, 4, 4.2, (0, 0, 0.85)),
     "front": (-90, 8, 6.5, (0, 0, 0.6)),
     "top": (-60, 35, 4.0, (0, 0.4, 1.6)),
+    "trunk": (75, 30, 4.5, (0, 1.9, 0.9)),
 }
 # camera position, target, lens (mm)
 INTERIOR = {
@@ -48,8 +51,12 @@ light.location = (0, 0.75, 1.38)
 light.visible_camera = False
 light.hide_render = True
 sc.collection.objects.link(light)
+OPENINGS = [o for o in bpy.data.objects if "open" in o.keys()]
 lens, clip = cam.data.lens, cam.data.clip_start
-for v in views:
+for name in views:
+    v = name[:-5] if name.endswith("_open") else name
+    for o in OPENINGS:
+        o["open"] = 1.0 if name.endswith("_open") else 0.0
     light.hide_render = v not in INTERIOR
     if v in INTERIOR:
         loc, t, cam.data.lens = INTERIOR[v]
@@ -63,5 +70,5 @@ for v in views:
         a, e = math.radians(az), math.radians(el)
         cam.location = t + Vector((math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e))) * dist
     cam.rotation_euler = (t - cam.location).to_track_quat("-Z", "Y").to_euler()
-    sc.render.filepath = os.path.join(ROOT, "renders", f"preview_{v}.png")
+    sc.render.filepath = os.path.join(ROOT, "renders", f"preview_{name}.png")
     bpy.ops.render.render(write_still=True)
