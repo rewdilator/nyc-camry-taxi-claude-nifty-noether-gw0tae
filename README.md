@@ -184,6 +184,7 @@ rebuilds it like a real NYC yellow cab:
 ![Taximeter and driver monitor](renders/interior_dashboard.png)
 ![Trunk open](renders/trunk_open.png)
 ![Trunk lid part open: shut line and split tail lamps](renders/trunk_lid_part_open.png)
+![Front door open: window frame and door card](renders/door_open_frame_detail.png)
 
 The decals are separate meshes (`Decal_*`) projected onto the body with ray casts. They follow
 the panel curvature 1.8 mm above the paint, and each has its own simple 0–1 UVs. They export to
