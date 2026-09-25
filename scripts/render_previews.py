@@ -2,6 +2,7 @@
 
     python3 scripts/render_previews.py [samples] [view,view,...]
 Views: fl side rr rside door rdoor rear front top
+Interior views (lit by a temporary cabin light): cabin tv dash
 """
 import math
 import os
@@ -35,11 +36,32 @@ VIEWS = {
     "front": (-90, 8, 6.5, (0, 0, 0.6)),
     "top": (-60, 35, 4.0, (0, 0.4, 1.6)),
 }
+# camera position, target, lens (mm)
+INTERIOR = {
+    "cabin": ((0.30, 1.05, 1.12), (0.0, 0.0, 0.92), 22),    # from the rear seat
+    "tv": ((-0.05, 0.85, 1.0), (-0.05, 0.3, 0.86), 30),     # Taxi TV and card reader
+    "dash": ((0.36, -0.1, 1.18), (0.0, -0.8, 0.95), 22),    # driver's seat: taximeter, monitor
+}
+light = bpy.data.objects.new("CabinLight", bpy.data.lights.new("CabinLight", "AREA"))
+light.data.energy, light.data.size = 12, 0.6
+light.location = (0, 0.75, 1.38)
+light.visible_camera = False
+light.hide_render = True
+sc.collection.objects.link(light)
+lens, clip = cam.data.lens, cam.data.clip_start
 for v in views:
-    az, el, dist, target = VIEWS[v]
-    t = Vector(target)
-    a, e = math.radians(az), math.radians(el)
-    cam.location = t + Vector((math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e))) * dist
+    light.hide_render = v not in INTERIOR
+    if v in INTERIOR:
+        loc, t, cam.data.lens = INTERIOR[v]
+        cam.data.clip_start = 0.03
+        t = Vector(t)
+        cam.location = loc
+    else:
+        az, el, dist, target = VIEWS[v]
+        cam.data.lens, cam.data.clip_start = lens, clip
+        t = Vector(target)
+        a, e = math.radians(az), math.radians(el)
+        cam.location = t + Vector((math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e))) * dist
     cam.rotation_euler = (t - cam.location).to_track_quat("-Z", "Y").to_euler()
     sc.render.filepath = os.path.join(ROOT, "renders", f"preview_{v}.png")
     bpy.ops.render.render(write_still=True)
