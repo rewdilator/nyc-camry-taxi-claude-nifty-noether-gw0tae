@@ -604,8 +604,12 @@ for door in [bpy.data.objects[n] for n in ("Door_FL", "Door_FR", "Door_RL", "Doo
         mp0, mp1 = y_a + 0.30, y_b - 0.08
         door_child(box(f"{door.name}_Map_Pocket", (0.045, mp1 - mp0, 0.07), at((mp0 + mp1) / 2, 0.40, 0.025),
                        card_mat, bevel=0.008), door)
-    door_child(box(f"{door.name}_Reflector", (0.006, 0.07, 0.02), at(y_b - 0.03, FLOOR_Z + 0.05, 0.004),
-                   reflector, bevel=0.002), door)
+    # reflector at the bottom rear corner of the card, where the card actually is at that height
+    rz = FLOOR_Z + 0.08
+    sp = row_span(rz)
+    if sp is not None:
+        door_child(box(f"{door.name}_Reflector", (0.006, 0.07, 0.02), at(sp[1] - 0.045, rz, 0.004),
+                       reflector, bevel=0.002), door)
 
 # ---------------------------------------------------------------------------
 # 3b. Trunk: carpeted liner, wheel-arch humps, load floor; lid liner rides with the lid
