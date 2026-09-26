@@ -21,6 +21,17 @@ fitted out like a real NYC yellow cab.
 | `scripts/` | The build pipeline (see below). |
 | `renders/` | Cycles preview renders. `original_before.png` shows the source model. |
 
+## A+ badges
+
+The source's emblems on the grille, the trunk lid and the four wheel caps are removed, and the
+**A+** badge takes their place, on the steering wheel too. The badge is built in
+`build_interior.py` from a bold font: a chrome **A** with a chrome **+** overlapping its lower right,
+each on a slightly larger gloss-black outline, with chamfered (faceted) edges. On the grille and
+trunk it sits on a rounded gloss-black plate. The trunk badge is parented to the lid.
+
+![Grille badge](renders/badge_grille.png)
+![Trunk badge](renders/badge_trunk.png)
+
 ## Opening the doors and trunk
 
 The doors and the trunk lid are separate objects in the `Doors_Trunk` collection. Each object's
@@ -133,12 +144,14 @@ rebuilds it like a real NYC yellow cab:
   - **Rear bench:** separate cushions and backrests for the two contoured outboard seats and the
     flatter centre seat, a fold-down centre armrest with pull tab, three head restraints and
     child-seat anchor tags.
-- **Steering wheel:** the source's oversized wheel is replaced by a 375 mm urethane rim (the LE's
-  wheel isn't leather), oval in section and swelling into thumb rests at 9 and 3 o'clock, with:
-  - a domed airbag cover, wider at the top than the bottom, with an oval chrome emblem
-  - tapered side spokes carrying the switch clusters: a round four-way pad in a satin ring (audio on
-    the left spoke, display and cruise on the right) and two small buttons outboard of it
-  - satin-silver trim on the spokes and a split lower spoke with a satin insert
+- **Steering wheel:** modelled on a photo of the XV70 wheel. A thick 370 mm urethane rim (the
+  LE's wheel isn't leather), oval in section and swelling into thumb rests at 9 and 3 o'clock, with:
+  - a large cushioned airbag pad, wider at the top and narrowing into the lower spoke, carrying the
+    A+ badge
+  - side spokes with piano-black switch clusters: a round four-way pad with a centre button in a
+    silver ring, two keys above it and two below (audio on the left, display and cruise on the right)
+  - a black lower spoke edged by the bright satin-silver V that runs from under each switch cluster
+    down to six o'clock
   - a column shroud and two stalks
 - **Seat belts:** front belts hang stowed from D-rings on the B-pillars, with buckles on the
   console side. The rear belts come out of the parcel shelf, and the rear buckles sit in the bench.
@@ -164,9 +177,9 @@ rebuilds it like a real NYC yellow cab:
     shows an Entune-style map and radio screen, with four silver keys and a knob on each side. The
     centre vents flank the screen, and the climate strip sits directly below it, with a phone tray
     and USB port underneath
-  - an instrument cluster with Toyota's hybrid system indicator (CHG / ECO / PWR zones, fuel gauge)
+  - an instrument cluster with chrome rings round both dials, Toyota's hybrid system indicator (CHG / ECO / PWR zones, fuel gauge)
     on the left, the speedometer on the right, and the READY/P multi-information display between
-  - air vents at both ends of the dash and a start button
+  - air vents with satin-chrome bezels at both ends of the dash, and a start button
 - **Console and floor:** cup holders in the centre console, behind the shifter. Charcoal carpet, sill
   scuff plates with a chrome insert, and parcel-shelf speakers with the high-mount brake light.
 - **Roof:**
