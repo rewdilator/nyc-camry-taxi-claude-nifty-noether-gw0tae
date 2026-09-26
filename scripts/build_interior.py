@@ -419,7 +419,7 @@ for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckl
 # ---------------------------------------------------------------------------
 insert_mat = material("Interior_Seat_Insert", (0.052, 0.052, 0.056, 1), rough=0.95, sheen=0.5, grain=(700, 0.5))
 leather = material("Interior_Wheel_Leather", (0.03, 0.03, 0.031, 1), rough=0.5, grain=(1800, 0.25))
-accent = material("Interior_Dash_Accent_Satin", (0.32, 0.32, 0.33, 1), rough=0.32, metal=1.0, grain=(2500, 0.08))
+accent = material("Interior_Dash_Accent_Satin", (0.22, 0.22, 0.23, 1), rough=0.3, metal=1.0, grain=(2500, 0.08))
 
 
 def tilted(name, size, pivot, local, tilt, mat, bevel=0.0, segments=3, subsurf=0):
@@ -632,9 +632,10 @@ box("Console_Base", (0.18, 0.86, 0.74 - FLOOR_Z), (0, -0.44, (0.74 + FLOOR_Z) / 
 box("Console_Armrest", (0.19, 0.30, 0.05), (0, -0.10, SEAT_Z + 0.185), cloth, bevel=0.018, segments=4)
 box("Console_Shifter_Boot", (0.07, 0.10, 0.04), (0, -0.50, SEAT_Z + 0.18), trim, bevel=0.015)
 box("Console_Shift_Gate_Plate", (0.085, 0.16, 0.004), (0, -0.50, SEAT_Z + 0.202), accent, bevel=0.003)
-cylinder("Console_Shifter_Stem", 0.009, 0.06, (0, -0.51, SEAT_Z + 0.23), black_plastic, 12)
-box("Console_Shifter_Knob", (0.042, 0.056, 0.075), (0, -0.515, SEAT_Z + 0.285), leather, bevel=0.019, segments=5)
-box("Console_Shifter_Knob_Trim", (0.044, 0.058, 0.006), (0, -0.515, SEAT_Z + 0.256), accent, bevel=0.0025)
+# the stubby lever the reviews mention: a short stem and a low knob
+cylinder("Console_Shifter_Stem", 0.009, 0.03, (0, -0.49, SEAT_Z + 0.215), black_plastic, 12)
+box("Console_Shifter_Knob", (0.04, 0.052, 0.055), (0, -0.49, SEAT_Z + 0.252), leather, bevel=0.018, segments=5)
+box("Console_Shifter_Knob_Trim", (0.042, 0.054, 0.005), (0, -0.49, SEAT_Z + 0.231), accent, bevel=0.0022)
 
 # ---------------------------------------------------------------------------
 # 3a. Dash, console and roof details (the source dash is a bare black shell)
@@ -664,25 +665,64 @@ cl_y = dash_face_y(0.38, 0.975) + 0.004
 quad("Dash_Gauge_Cluster", (0.38, cl_y, 0.975), 0.30, 0.1125, Vector((0, 1, 0.28)), cluster_mat)
 box("Dash_Gauge_Cluster_Bezel", (0.32, 0.012, 0.13), (0.38, cl_y - 0.004, 0.975), black_plastic, bevel=0.004,
     rot=(math.radians(-15.6), 0, 0))
-# 8 in touchscreen on the centre of the dash, vents below it and at both ends, climate controls
-scr_x, scr_z = -0.06, 0.955
-device("Dash_Touchscreen", (scr_x, dash_face_y(scr_x, scr_z) + 0.012, scr_z), (0.215, 0.13, 0.02),
-       Vector((0, 1, 0.12)), black_plastic, screen_mat, (0.195, 0.113))
-vent("Dash_Vent_Centre_L", -0.12, 0.83)
-vent("Dash_Vent_Centre_R", 0.00, 0.83)
+# Centre stack, as on the XV70 Camry: a triangular piano-black panel angled toward the driver, the
+# 7 in touchscreen at its top with silver buttons and two knobs beside it, the centre vents
+# flanking it, and the climate strip directly below; the panel tapers down into the console.
+piano = material("Interior_Piano_Black", (0.01, 0.01, 0.011, 1), rough=0.08, coat=1.0)
+STACK_X = -0.01
+stack_n = Vector((0.14, 1, 0.10)).normalized()          # turned a little toward the driver
+stack_rows = [(0.975, 0.40), (0.86, 0.34), (0.76, 0.24), (0.66, 0.17), (0.60, 0.15)]   # (z, width)
+verts, faces = [], []
+for z, w in stack_rows:
+    for x in (STACK_X - w / 2, STACK_X + w / 2):
+        verts.append(Vector((x, dash_face_y(x, z) + 0.006, z)))
+for k in range(len(stack_rows) - 1):
+    faces.append((2 * k, 2 * k + 1, 2 * k + 3, 2 * k + 2))
+sheet("Dash_Centre_Stack_Panel", verts, faces, piano, 0.004).data.shade_smooth()
+scr_x, scr_z = STACK_X, 0.925
+scr_y = dash_face_y(scr_x, scr_z) + 0.014
+device("Dash_Touchscreen", (scr_x, scr_y, scr_z), (0.19, 0.11, 0.018), stack_n, piano, screen_mat, (0.165, 0.093))
+right_, up_, _ = frame_axes(stack_n)
+for side in (-1, 1):
+    # four silver hard keys in a column on each side of the screen, a knob below them
+    for k in range(4):
+        c = Vector((scr_x, scr_y, scr_z)) + right_ * side * 0.108 + up_ * (0.036 - k * 0.024) + stack_n * 0.004
+        box(f"Dash_Screen_Key_{'L' if side > 0 else 'R'}_{k}", (0.016, 0.006, 0.014), c, chrome, bevel=0.002,
+            rot=Matrix((right_, -stack_n, up_)).transposed().to_euler())
+    knob = cylinder(f"Dash_Knob_{'Tune' if side < 0 else 'Volume'}", 0.012, 0.018, (0, 0, 0), chrome, 20)
+    knob.matrix_world = (Matrix.Translation(Vector((scr_x, scr_y, scr_z)) + right_ * side * 0.108 - up_ * 0.075)
+                         @ stack_n.to_track_quat("Z", "Y").to_matrix().to_4x4())
+# centre vents either side of the screen (the driver's one sits behind the T-PEP monitor)
+vent("Dash_Vent_Centre_L", STACK_X + 0.19, 0.93, w=0.07, h=0.075)
+vent("Dash_Vent_Centre_R", STACK_X - 0.19, 0.93, w=0.07, h=0.075)
 vent("Dash_Vent_Outer_L", 0.62, 0.95, w=0.09, h=0.055)
 vent("Dash_Vent_Outer_R", -0.62, 0.95, w=0.09, h=0.055)
-cz = 0.775
-quad("Dash_Climate_Panel", (-0.06, dash_face_y(-0.06, cz) + 0.004, cz), 0.20, 0.05, Vector((0, 1, 0.35)),
-     climate_mat)
+cz = 0.815
+quad("Dash_Climate_Panel", (STACK_X, dash_face_y(STACK_X, cz) + 0.009, cz), 0.24, 0.06, stack_n, climate_mat)
+# open tray for phone/wireless charging under the climate strip, with the USB port
+box("Dash_Stack_Tray", (0.16, 0.05, 0.012), (STACK_X, dash_face_y(STACK_X, 0.715) + 0.02, 0.705), black_plastic,
+    bevel=0.004)
+box("Dash_USB_Port", (0.014, 0.004, 0.007), (STACK_X - 0.05, dash_face_y(STACK_X - 0.05, 0.735) + 0.007, 0.735),
+    steel, bevel=0.001)
 box("Dash_Start_Button", (0.03, 0.012, 0.03), (0.16, dash_face_y(0.16, 0.80) + 0.004, 0.80), chrome, bevel=0.008)
-# satin-silver accent band across the passenger side of the dash, dropping into the centre stack
-band_x = np.linspace(-0.70, -0.20, 26)
+# the XV70's wave-shaped trim band: across the passenger side of the dash, then down the passenger
+# edge of the centre stack into the console
 band = []
-for x in band_x:
-    zc = 0.885 if x < -0.30 else 0.885 - (x + 0.30) * 0.35
-    band.append([Vector((x, dash_face_y(x, z) + 0.003, z)) for z in (zc - 0.012, zc + 0.012)])
-verts = [p for pair in band for p in pair]
+for x in np.linspace(-0.70, -0.24, 20):
+    zc = 0.885 + 0.012 * math.sin((x + 0.70) / 0.46 * math.pi)       # a gentle wave
+    band.append((x, zc))
+for t in np.linspace(0, 1, 10)[1:]:                                   # sweep down beside the stack
+    z = 0.885 - t * (0.885 - 0.64)
+    w = 0.40 - (0.40 - 0.15) * (0.975 - z) / (0.975 - 0.60)
+    band.append((STACK_X - w / 2 - 0.02, z))
+verts, faces = [], []
+for k, (x, z) in enumerate(band):
+    if k + 1 < len(band):
+        dx, dz = band[k + 1][0] - x, band[k + 1][1] - z
+    nrm = Vector((-dz, 0, dx)).normalized() * 0.016                   # half-width across the band
+    for sgn_ in (-1, 1):
+        px, pz = x + sgn_ * nrm.x, z + sgn_ * nrm.z
+        verts.append(Vector((px, dash_face_y(px, pz) + 0.004, pz)))
 faces = [(2 * i, 2 * i + 2, 2 * i + 3, 2 * i + 1) for i in range(len(band) - 1)]
 sheet("Dash_Accent_Band", verts, faces, accent, 0.002).data.shade_smooth()
 # cup holders between the shifter and the armrest

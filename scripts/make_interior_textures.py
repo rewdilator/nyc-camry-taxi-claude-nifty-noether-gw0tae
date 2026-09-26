@@ -312,7 +312,32 @@ def dial(cx, cy, r, lo, hi, val, label, unit, ticks):
     draw_centered(d, (cx - 90, cy + 112, cx + 90, cy + 145), unit, font(REG, 24), GREY)
 
 
-dial(215, 225, 190, 0, 8, 0, "POWER", "HYBRID", 8)
+def hybrid_indicator(cx, cy, r):
+    """Toyota's hybrid system indicator: CHG (regeneration), ECO and PWR zones instead of a rev
+    counter; the needle rests at the CHG/ECO boundary with the car in READY."""
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(70, 80, 95, 255), width=6)
+    zones = ((135, 175, (60, 140, 255, 255), "CHG"), (175, 300, (60, 200, 110, 255), "ECO"),
+             (300, 405, (235, 235, 240, 255), "PWR"))
+    for a0_, a1_, col, lab in zones:
+        rr = r - 22
+        d.arc((cx - rr, cy - rr, cx + rr, cy + rr), a0_, a1_, fill=col, width=18)
+        am = math.radians((a0_ + a1_) / 2)
+        draw_centered(d, (cx + (r - 72) * math.cos(am) - 40, cy + (r - 72) * math.sin(am) - 20,
+                          cx + (r - 72) * math.cos(am) + 40, cy + (r - 72) * math.sin(am) + 20),
+                      lab, font(BOLD, 28), col)
+    a = math.radians(175)
+    d.line((cx, cy, cx + (r - 30) * math.cos(a), cy + (r - 30) * math.sin(a)), fill=(255, 70, 40, 255), width=8)
+    d.ellipse((cx - 16, cy - 16, cx + 16, cy + 16), fill=(40, 44, 54, 255))
+    draw_centered(d, (cx - 110, cy + 70, cx + 110, cy + 110), "HYBRID SYSTEM", font(BOLD, 22), WHITE)
+    # fuel gauge along the bottom of the dial
+    d.text((cx - 95, cy + 128), "E", font=font(BOLD, 22), fill=GREY)
+    d.text((cx + 82, cy + 128), "F", font=font(BOLD, 22), fill=GREY)
+    for k in range(8):
+        x = cx - 70 + k * 19
+        d.rectangle((x, cy + 134, x + 13, cy + 148), fill=(230, 230, 235, 255) if k < 6 else (60, 66, 80, 255))
+
+
+hybrid_indicator(215, 225, 190)
 dial(W - 215, 225, 190, 0, 160, 0, "0", "MPH", 16)
 d.rounded_rectangle((440, 60, 760, 390), radius=22, fill=(18, 22, 30, 255), outline=(60, 66, 80, 255), width=3)
 draw_centered(d, (440, 80, 760, 150), "READY", font(BOLD, 52), (60, 220, 90, 255))
@@ -329,13 +354,27 @@ d = ImageDraw.Draw(it)
 d.rectangle((0, 0, W, 64), fill=(24, 28, 38, 255))
 text_left(d, (24, 16), "10:42", font(BOLD, 32), WHITE)
 text_right(d, (W - 24, 16), "72°F", font(BOLD, 32), WHITE)
-tiles = [("NAV", (40, 120, 200)), ("AUDIO", (160, 60, 170)), ("PHONE", (40, 160, 90)),
-         ("APPS", (200, 120, 30)), ("CLIMATE", (30, 150, 170)), ("SETUP", (90, 96, 110))]
-for k, (lab, col) in enumerate(tiles):
-    x0, y0 = 40 + (k % 3) * 315, 100 + (k // 3) * 230
-    d.rounded_rectangle((x0, y0, x0 + 290, y0 + 200), radius=20, fill=col + (255,))
-    draw_centered(d, (x0, y0 + 110, x0 + 290, y0 + 180), lab, font(BOLD, 40), WHITE)
-    d.ellipse((x0 + 115, y0 + 30, x0 + 175, y0 + 90), outline=WHITE, width=6)
+# Entune-style split screen: map on the left, radio on the right, soft keys along the bottom
+mp = Image.new("RGBA", (600, 436), (214, 218, 210, 255))          # map panel, drawn on its own canvas
+dm_ = ImageDraw.Draw(mp)
+for k in range(-4, 12):                                   # Manhattan grid, rotated like the island
+    dm_.line((k * 70, 0, k * 70 + 260, 436), fill=(250, 250, 248, 255), width=10)
+    dm_.line((0, k * 60, 600, k * 60 - 120), fill=(250, 250, 248, 255), width=6)
+dm_.polygon(((140, 96), (260, 56), (330, 236), (210, 276)), fill=(170, 210, 160, 255))   # park
+dm_.line((60, 406, 180, 266, 300, 216, 430, 86), fill=(40, 120, 230, 255), width=12)     # route
+dm_.ellipse((418, 74, 442, 98), fill=(230, 60, 50, 255))
+dm_.polygon(((52, 416), (68, 416), (60, 394)), fill=(20, 20, 30, 255))
+it.paste(mp, (0, 64))
+d.rectangle((600, 64, W, 500), fill=(20, 24, 32, 255))
+text_left(d, (630, 100), "FM", font(BOLD, 34), GREY)
+text_left(d, (630, 150), "101.1", font(BOLD, 96), WHITE)
+text_left(d, (630, 270), "WCBS-FM", font(REG, 34), GREY)
+d.rounded_rectangle((630, 350, W - 30, 362), radius=6, fill=(60, 66, 80, 255))
+d.rounded_rectangle((630, 350, 800, 362), radius=6, fill=(230, 180, 60, 255))
+for k, lab in enumerate(("MAP", "AUDIO", "PHONE", "APPS", "SETUP")):
+    x0 = k * W // 5
+    d.rectangle((x0 + 2, 504, x0 + W // 5 - 2, H), fill=(28, 32, 42, 255))
+    draw_centered(d, (x0, 504, x0 + W // 5, H), lab, font(BOLD, 30), WHITE if k else (230, 180, 60, 255))
 save(it, "interior_infotainment.png")
 
 # 11. Climate control panel (under the centre vents), 4:1

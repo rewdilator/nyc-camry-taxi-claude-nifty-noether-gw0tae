@@ -136,7 +136,7 @@ rebuilds it like a real NYC yellow cab:
   - a column shroud and two stalks
 - **Seat belts:** front belts hang stowed from D-rings on the B-pillars, with buckles on the
   console side. The rear belts come out of the parcel shelf, and the rear buckles sit in the bench.
-  There's also a centre console with an armrest, and a shifter with a satin gate plate and a
+  There's also a centre console with an armrest, and a stubby shifter with a satin gate plate and a
   leather knob.
 - **Door cards:** every door has a moulded card that follows the door's inner skin, including the
   rear door's curve round the wheel arch. Each card has:
@@ -149,12 +149,16 @@ rebuilds it like a real NYC yellow cab:
     red courtesy reflector
 
   The cards are part of the doors, so they swing with them.
-- **Dash:**
-  - an instrument cluster (hybrid power meter, READY/P display, speedometer) in the cluster hood
-  - an 8 in touchscreen in the centre, with the vents below it
-  - air vents with slats at both ends of the dash
-  - a climate control panel and a start button
-  - a satin-silver accent band across the passenger side, dropping into the centre stack
+- **Dash:** laid out like the XV70 Camry Hybrid LE in published photos and reviews:
+  - an asymmetric dash split by a wave-shaped satin trim band, which runs across the passenger side
+    and then down the passenger edge of the centre stack into the console
+  - a triangular piano-black centre stack angled toward the driver. The 7 in touchscreen at its top
+    shows an Entune-style map and radio screen, with four silver keys and a knob on each side. The
+    centre vents flank the screen, and the climate strip sits directly below it, with a phone tray
+    and USB port underneath
+  - an instrument cluster with Toyota's hybrid system indicator (CHG / ECO / PWR zones, fuel gauge)
+    on the left, the speedometer on the right, and the READY/P multi-information display between
+  - air vents at both ends of the dash and a start button
 - **Console and floor:** cup holders in the centre console, behind the shifter. Charcoal carpet, sill
   scuff plates with a chrome insert, and parcel-shelf speakers with the high-mount brake light.
 - **Roof:**
