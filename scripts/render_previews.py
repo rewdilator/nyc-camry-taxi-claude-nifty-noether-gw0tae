@@ -48,7 +48,7 @@ INTERIOR = {
     "wheel": ((0.38, -0.02, 1.07), (0.375, -0.485, 0.90), 30),  # steering wheel and gauges
     "seats": ((0.0, 0.28, 1.25), (0.0, -0.35, 0.75), 24),      # front seats from behind (partition hidden)
     "shifter": ((0.12, -0.25, 1.00), (0.0, -0.49, 0.80), 35),  # console and shift lever
-    "fseat": ((0.42, -0.62, 1.02), (-0.38, -0.02, 0.78), 24),   # passenger seat seen from the driver's side
+    "fseat": ((0.05, -0.62, 1.12), (-0.40, 0.05, 0.80), 26),   # passenger seat from the dash
 }
 light = bpy.data.objects.new("CabinLight", bpy.data.lights.new("CabinLight", "AREA"))
 light.data.energy, light.data.size = 10, 0.5

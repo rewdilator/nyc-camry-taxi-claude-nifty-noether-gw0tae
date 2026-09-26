@@ -136,7 +136,8 @@ rebuilds it like a real NYC yellow cab:
 - **Seats:** the source's low-poly seats are replaced by sculpted upholstery. Every cushion,
   backrest and head restraint is lofted from cross-sections and smoothed (subdivision), so the
   seams and surfaces are curved like sewn upholstery rather than boxes. The centre panel of each
-  sitting face is a second fabric, as on the LE's two-tone cloth.
+  sitting face is a second fabric, as on the LE's two-tone cloth, framed by a sewn seam groove and
+  crossed by stitched pleats. Both fabrics have a woven (warp and weft) surface texture.
   - **Front seats:** base on steel rails, side shield and recline lever. The cushion has thigh
     bolsters and a raised, rolled front edge. The backrest has side bolsters, a lumbar bulge and
     shoulders narrowing to the top. The head restraint is a rounded pad on two chrome posts in
@@ -146,13 +147,16 @@ rebuilds it like a real NYC yellow cab:
     child-seat anchor tags.
 - **Steering wheel:** modelled on a photo of the XV70 wheel. A thick 370 mm urethane rim (the
   LE's wheel isn't leather), oval in section and swelling into thumb rests at 9 and 3 o'clock, with:
+  - one moulded spoke body, as on the real wheel: the two side spokes and the lower spoke that
+    narrows into a V down to six o'clock, swept from its outline with rounded (subdivided) edges
+    and running into the rim
   - a large cushioned airbag pad, wider at the top and narrowing into the lower spoke, carrying the
     A+ badge
-  - side spokes with piano-black switch clusters: a round four-way pad with a centre button in a
-    silver ring, two keys above it and two below (audio on the left, display and cruise on the right)
-  - a black lower spoke edged by the bright satin-silver V that runs from under each switch cluster
-    down to six o'clock
-  - a column shroud and two stalks
+  - piano-black switch panels set flush into the side spokes: a round four-way pad with a centre
+    button in a silver ring, two keys above it and two below (audio on the left, display and cruise
+    on the right)
+  - a thin bright-silver inlay along both edges of the V
+  - a rounded column shroud and two stalks
 - **Seat belts:** front belts hang stowed from D-rings on the B-pillars, with buckles on the
   console side. The rear belts come out of the parcel shelf, and the rear buckles sit in the bench.
   There's also a centre console with an armrest and the Camry Hybrid's shifter: a piano-black
@@ -210,6 +214,7 @@ rebuilds it like a real NYC yellow cab:
 ![Centre stack and passenger dash](renders/interior_passenger_dash.png)
 ![Steering wheel](renders/interior_steering_wheel.png)
 ![Front passenger seat](renders/interior_front_seat.png)
+![Front seats from behind](renders/interior_front_seats_top.png)
 ![Shifter and gate](renders/interior_shifter.png)
 ![Trunk open](renders/trunk_open.png)
 ![Trunk lid part open: shut line and split tail lamps](renders/trunk_lid_part_open.png)

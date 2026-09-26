@@ -81,7 +81,7 @@ def load_image(fname):
 
 
 def material(name, color=(0.8, 0.8, 0.8, 1), rough=0.5, metal=0.0, image=None, emission=0.0,
-             alpha=False, transmission=0.0, ior=1.5, coat=0.0, sheen=0.0, grain=None):
+             alpha=False, transmission=0.0, ior=1.5, coat=0.0, sheen=0.0, grain=None, weave=None):
     """Principled material; `grain` = (scale, strength) adds a fine procedural surface texture (the
     weave of seat cloth and headliner, the stipple on moulded plastic)."""
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
@@ -111,6 +111,24 @@ def material(name, color=(0.8, 0.8, 0.8, 1), rough=0.5, metal=0.0, image=None, e
         if emission:
             nt.links.new(t.outputs["Color"], b.inputs["Emission Color"])
     b.inputs["Emission Strength"].default_value = emission
+    if weave:
+        # woven cloth: a fine checker of warp and weft, broken up by noise, as bump
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        ck = nt.nodes.new("ShaderNodeTexChecker")
+        ck.inputs["Scale"].default_value = weave[0]
+        nz = nt.nodes.new("ShaderNodeTexNoise")
+        nz.inputs["Scale"].default_value = weave[0] * 0.2
+        mix = nt.nodes.new("ShaderNodeMath")
+        mix.operation = "ADD"
+        bump = nt.nodes.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = weave[1]
+        bump.inputs["Distance"].default_value = 0.0004
+        nt.links.new(tc.outputs["Object"], ck.inputs["Vector"])
+        nt.links.new(tc.outputs["Object"], nz.inputs["Vector"])
+        nt.links.new(ck.outputs["Fac"], mix.inputs[0])
+        nt.links.new(nz.outputs["Fac"], mix.inputs[1])
+        nt.links.new(mix.outputs[0], bump.inputs["Height"])
+        nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
     if grain:
         tc = nt.nodes.new("ShaderNodeTexCoord")
         noise = nt.nodes.new("ShaderNodeTexNoise")
@@ -125,7 +143,7 @@ def material(name, color=(0.8, 0.8, 0.8, 1), rough=0.5, metal=0.0, image=None, e
     return m
 
 
-cloth = material("Interior_Black_Cloth", (0.034, 0.034, 0.037, 1), rough=0.9, sheen=0.4, grain=(900, 0.35))
+cloth = material("Interior_Black_Cloth", (0.034, 0.034, 0.037, 1), rough=0.9, sheen=0.2, weave=(700, 0.35))
 trim = material("Interior_Black_Trim", (0.036, 0.036, 0.039, 1), rough=0.55, grain=(1400, 0.15))
 abs_black = material("Partition_Black_Panel", (0.025, 0.025, 0.027, 1), rough=0.45, grain=(1400, 0.12))
 frame_mat = material("Partition_Frame_Black_Aluminium", (0.03, 0.03, 0.032, 1), rough=0.35, metal=1.0)
@@ -406,7 +424,7 @@ for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
             (x + dx, -0.10, FLOOR_Z + 0.0175), steel, bevel=0.004)
 
 # Cushions on the bases, overlapping the foot of each source seat back.
-insert_mat = material("Interior_Seat_Insert", (0.052, 0.052, 0.056, 1), rough=0.95, sheen=0.5, grain=(700, 0.5))
+insert_mat = material("Interior_Seat_Insert", (0.055, 0.055, 0.06, 1), rough=0.95, sheen=0.25, weave=(420, 0.6))
 
 
 def smoothstep(a, b, v):
@@ -416,7 +434,7 @@ def smoothstep(a, b, v):
 
 def pad_mesh(name, W, L, T, bolster=0.0, bol_start=0.62, bol_fade=(0.72, 0.95), lumbar=0.0, lumbar_t=0.3,
              taper=0.0, round_end=True, round_start=False, insert_u=0.56, insert_t=(0.06, 0.86), rise=0.0,
-             nx=16, nt=18, mats=None):
+             nx=16, nt=18, mats=None, seam=0.0, pleats=0, subsurf=2):
     """An upholstered pad (seat back, cushion or head restraint), lofted from cross-sections.
 
     Local frame: x across, n through the pad (the sitting face is -n), t along its length (0..1 over
@@ -442,6 +460,15 @@ def pad_mesh(name, W, L, T, bolster=0.0, bol_start=0.62, bol_fade=(0.72, 0.95), 
             n -= lumbar * math.exp(-((t - lumbar_t) / 0.16) ** 2)
             n -= rise * smoothstep(0.55, 0.9, t) * sc
             n += T * 0.45 * smoothstep(0.9, 1.0, au) * sc          # the edge curls round to the back
+            if seam and insert_t[0] - 0.03 < t < insert_t[1] + 0.03:
+                # sewn seams: a groove round the centre panel, and pleats across it
+                n += seam * math.exp(-((au - insert_u) / 0.03) ** 2)
+                if au < insert_u:
+                    n += seam * (math.exp(-((t - insert_t[0]) / 0.015) ** 2) + math.exp(-((t - insert_t[1]) / 0.015) ** 2))
+                    if pleats:
+                        ph = (t - insert_t[0]) / (insert_t[1] - insert_t[0]) * pleats
+                        dd = min(ph - math.floor(ph), math.ceil(ph) - ph)
+                        n += seam * 0.7 * math.exp(-(dd / 0.07) ** 2)
             front.append((u * w, n, t * L))
         for i in reversed(range(nx)):
             u = -math.cos(math.pi * i / (nx - 1))
@@ -467,7 +494,7 @@ def pad_mesh(name, W, L, T, bolster=0.0, bol_start=0.62, bol_fade=(0.72, 0.95), 
     me_.shade_smooth()
     ob = bpy.data.objects.new(name, me_)
     sub = ob.modifiers.new("Subsurf", "SUBSURF")
-    sub.levels = sub.render_levels = 2
+    sub.levels = sub.render_levels = subsurf
     return add(ob)
 
 
@@ -485,8 +512,9 @@ def place_cushion(ob, x, y_rear, z, pitch=math.radians(5)):
 CUSH_T = 0.075
 for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
     # sculpted cushion: thigh bolsters, a slight dish, and a raised, rolled front edge
-    place_cushion(pad_mesh(f"Seat_Cushion_{tag}", 0.51, 0.52, CUSH_T + 0.02, bolster=0.035, bol_start=0.6,
-                           bol_fade=(0.8, 1.0), rise=0.012, taper=0.06, insert_u=0.52, insert_t=(0.1, 0.84)),
+    place_cushion(pad_mesh(f"Seat_Cushion_{tag}", 0.51, 0.52, CUSH_T + 0.02, bolster=0.045, bol_start=0.6,
+                           bol_fade=(0.8, 1.0), rise=0.012, taper=0.06, insert_u=0.52, insert_t=(0.1, 0.84),
+                           seam=0.006, pleats=4, nx=34, nt=56, subsurf=1),
                   x, 0.10, SEAT_Z + CUSH_T / 2 + 0.005)
     # front belt: stowed down the B-pillar from the D-ring; buckle stalk on the console side
     xo = math.copysign(1, x)
@@ -508,7 +536,8 @@ RW_C = 2 * rear_hw - 2 * RW_OUT
 for x, w, tag, bol in ((rear_hw - RW_OUT / 2, RW_OUT, "L", 0.022), (0.0, RW_C, "C", 0.006),
                        (-(rear_hw - RW_OUT / 2), RW_OUT, "R", 0.022)):
     place_cushion(pad_mesh(f"Seat_Cushion_Rear_{tag}", w + 0.01, REAR_Y1 - REAR_Y0, CUSH_T + 0.02, bolster=bol,
-                           bol_fade=(0.8, 1.0), rise=0.008, insert_u=0.5, insert_t=(0.1, 0.84)),
+                           bol_fade=(0.8, 1.0), rise=0.008, insert_u=0.5, insert_t=(0.1, 0.84),
+                           seam=0.005, pleats=4, nx=34, nt=52, subsurf=1),
                   x, REAR_Y1, SEAT_Z + CUSH_T / 2 + 0.005, pitch=math.radians(7))
 for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckles and latches
     box(f"Seat_Belt_Buckle_Rear_{i}", (0.03, 0.02, 0.07), (x, REAR_Y1 - 0.03, SEAT_Z + CUSH_T + 0.03),
@@ -537,13 +566,14 @@ def tilted(name, size, pivot, local, tilt, mat, bevel=0.0, segments=3, subsurf=0
 def seat_back(tag, x, pivot, tilt, width, height, thick, headrest=(0.27, 0.10, 0.18), bolsters=True):
     """Sculpted backrest (bolsters, lumbar bulge, shoulders narrowing to the top) with a head restraint
     on two chrome posts, reclined about its foot."""
-    back = pad_mesh(f"Seat_Back_{tag}", width, height, thick, bolster=0.05 if bolsters else 0.012,
+    back = pad_mesh(f"Seat_Back_{tag}", width, height, thick, bolster=0.062 if bolsters else 0.012,
                     bol_start=0.6, lumbar=0.014, taper=0.2 if bolsters else 0.05,
-                    insert_u=0.55, insert_t=(0.05, 0.8))
+                    insert_u=0.55, insert_t=(0.08, 0.8), seam=0.006, pleats=5, nx=34, nt=60, subsurf=1)
     place_back(back, pivot, tilt, x)
     if headrest:
         hw, hd, hh = headrest
-        hr = pad_mesh(f"Seat_Headrest_{tag}", hw, hh, hd, taper=0.12, round_start=True, insert_u=0.0, nx=12, nt=12)
+        hr = pad_mesh(f"Seat_Headrest_{tag}", hw, hh, hd, taper=0.14, round_start=True, insert_u=0.62,
+                      insert_t=(0.2, 0.8), seam=0.004, nx=24, nt=24, subsurf=1)
         place_back(hr, pivot, tilt, x, height + 0.06)
         for px in (-0.06, 0.06):
             post = cylinder(f"Seat_Headrest_Post_{tag}_{'L' if px > 0 else 'R'}", 0.0055, 0.09, (0, 0, 0), chrome, 10)
@@ -677,16 +707,12 @@ hub.matrix_world = WM @ Matrix.Translation((0, 0.012, 0.066)) @ Matrix(
     ((1, 0, 0, 0), (0, -1, 0, 0), (0, 0, -1, 0), (0, 0, 0, 1)))      # x, n, t -> x, -n (to driver), -t
 for side in (-1, 1):
     tag = "L" if side > 0 else "R"
-    # side spoke: tapers from the pad out to the rim, carrying the switch panel
-    wheel_slab(f"Steering_Wheel_Spoke_{tag}", rounded([(side * 0.066, 0.016), (side * 0.182, 0.014),
-                                                      (side * 0.182, -0.030), (side * 0.070, -0.048)][::side], 0.008),
-               -0.010, 0.020, trim, bevel=0.005)
-    panel = [(side * 0.092, 0.034), (side * 0.160, 0.026), (side * 0.160, -0.040), (side * 0.090, -0.048)]
-    wheel_slab(f"Steering_Wheel_Switch_Panel_{tag}", rounded(panel[::side], 0.008), 0.020, 0.025, piano,
+    panel = [(side * 0.094, 0.024), (side * 0.158, 0.018), (side * 0.158, -0.036), (side * 0.094, -0.042)]
+    wheel_slab(f"Steering_Wheel_Switch_Panel_{tag}", rounded(panel[::side], 0.012), 0.012, 0.0195, piano,
                bevel=0.002)
     # Camry switch cluster: a round four-way pad with a centre button in a satin ring (audio on the
     # left spoke, display and cruise on the right), two keys above it and two below
-    pc = Vector((side * 0.124, 0.027, -0.006))
+    pc = Vector((side * 0.124, 0.0215, -0.006))
     face = Matrix.Rotation(math.radians(-90), 4, "X")
     ring_ = cylinder(f"Steering_Wheel_Pad_Ring_{tag}", 0.0195, 0.004, (0, 0, 0), wheel_silver, 32)
     ring_.matrix_world = WM @ Matrix.Translation(pc) @ face
@@ -697,21 +723,78 @@ for side in (-1, 1):
     for k, (dx, dz) in enumerate(((0, 0.0115), (0, -0.0115), (0.0115, 0), (-0.0115, 0))):
         wheel_part(f"Steering_Wheel_Arrow_{tag}_{k}", (0.0035, 0.002, 0.0035), pc + Vector((dx, 0.0056, dz)),
                    accent, bevel=0.001)
-    for k, (dx, dz) in enumerate(((-0.012, 0.028), (0.012, 0.028), (-0.012, -0.036), (0.012, -0.036))):
-        wheel_part(f"Steering_Wheel_Key_{tag}_{k}", (0.019, 0.005, 0.009), pc + Vector((side * dx, -0.001, dz)),
+    for k, (dx, dz) in enumerate(((-0.011, 0.024), (0.011, 0.024), (-0.011, -0.029), (0.011, -0.029))):
+        wheel_part(f"Steering_Wheel_Key_{tag}_{k}", (0.017, 0.005, 0.007), pc + Vector((side * dx, -0.001, dz)),
                    trim, bevel=0.0025)
-# lower spoke: a black U under the pad reaching the bottom of the rim, edged with the satin-silver V
-# that runs from under each switch cluster down to six o'clock
-LOWER = [(-0.100, -0.030), (0.100, -0.030), (0.050, -0.168), (0.024, -0.184), (-0.024, -0.184), (-0.050, -0.168)]
-wheel_slab("Steering_Wheel_Spoke_Lower", LOWER, -0.012, 0.014, trim, bevel=0.005)
+
+
+def offset_poly(poly, d):
+    """Offset a closed 2D polygon inward by d (positive d shrinks a counter-clockwise polygon)."""
+    out = []
+    n_ = len(poly)
+    for k in range(n_):
+        p0, p1, p2 = Vector(poly[k - 1]), Vector(poly[k]), Vector(poly[(k + 1) % n_])
+        e0, e1 = (p1 - p0).normalized(), (p2 - p1).normalized()
+        n0, n1 = Vector((-e0.y, e0.x)), Vector((-e1.y, e1.x))
+        m = (n0 + n1)
+        m = m.normalized() if m.length > 1e-6 else n0
+        out.append(tuple(p1 + m * (d / max(0.35, m.dot(n0)))))
+    return out
+
+
+def moulded(name, outline, layers, mat, subsurf=2):
+    """A moulded part: `outline` (x, z, counter-clockwise, seen from the driver) swept through
+    `layers` of (y, inset); inset rings at the faces round the edges once subdivided."""
+    bm_ = bmesh.new()
+    rings_ = []
+    for y, inset in layers:
+        ring = offset_poly(outline, inset) if inset else outline
+        rings_.append([bm_.verts.new((x, y, z)) for x, z in ring])
+    n_ = len(outline)
+    for a, b in zip(rings_, rings_[1:]):
+        for k in range(n_):
+            bm_.faces.new((a[k], a[(k + 1) % n_], b[(k + 1) % n_], b[k]))
+    bm_.faces.new(rings_[0][::-1])
+    bm_.faces.new(rings_[-1])
+    bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces)
+    me_ = bpy.data.meshes.new(name)
+    bm_.to_mesh(me_)
+    bm_.free()
+    me_.materials.append(mat)
+    me_.shade_smooth()
+    ob = bpy.data.objects.new(name, me_)
+    if subsurf:
+        sub_ = ob.modifiers.new("Subsurf", "SUBSURF")
+        sub_.levels = sub_.render_levels = subsurf
+    add(ob)
+    ob.matrix_world = WM
+    return ob
+
+
+# Spoke body, moulded in one piece like the real wheel: the two side spokes (carrying the switch
+# clusters) and the lower spoke that narrows into a V down to six o'clock, all running into the rim.
+half = [(0.000, 0.036), (0.070, 0.037), (0.125, 0.030), (0.160, 0.024), (0.176, 0.020), (0.180, -0.014),
+        (0.176, -0.048), (0.150, -0.052), (0.112, -0.058), (0.092, -0.074), (0.072, -0.110), (0.052, -0.148),
+        (0.036, -0.176), (0.020, -0.186)]
+SPOKE = [(x, z) for x, z in half] + [(-x, z) for x, z in reversed(half[1:])]
+SPOKE = SPOKE[::-1] if sum(SPOKE[k][0] * SPOKE[(k + 1) % len(SPOKE)][1] - SPOKE[(k + 1) % len(SPOKE)][0]
+                           * SPOKE[k][1] for k in range(len(SPOKE))) < 0 else SPOKE
+moulded("Steering_Wheel_Spoke_Body", SPOKE,
+        [(-0.016, 0.008), (-0.013, 0.002), (-0.010, 0.0), (0.010, 0.0), (0.014, 0.002), (0.017, 0.007)], trim)
+# the bright satin-silver V: an inlay along the outer edges of the lower spoke, from under each
+# switch cluster down to the rim at six o'clock
 for side in (-1, 1):
     tag = "L" if side > 0 else "R"
-    v_in = [(side * 0.100, -0.030), (side * 0.050, -0.168), (side * 0.024, -0.184)]
-    v_out = [(side * 0.112, -0.034), (side * 0.060, -0.172), (side * 0.030, -0.192)]
-    outline = v_in + v_out[::-1]
-    wheel_slab(f"Steering_Wheel_V_Trim_{tag}", outline if side < 0 else outline[::-1], -0.006, 0.018, wheel_silver,
-               bevel=0.002)
-wheel_part("Steering_Column_Shroud", (0.12, 0.24, 0.10), (0, -0.15, -0.03), trim, bevel=0.025, segments=3)
+    edge = [(0.150, -0.047), (0.112, -0.053), (0.090, -0.069), (0.069, -0.106), (0.049, -0.144),
+            (0.033, -0.172), (0.020, -0.181)]
+    inner = [(x, z) for x, z in edge] + [(x - 0.0035, z + 0.0025) for x, z in reversed(edge)]
+    strip = [(side * x, z) for x, z in inner]
+    if side < 0:
+        strip = strip[::-1]
+    moulded(f"Steering_Wheel_V_Trim_{tag}", strip, [(0.0125, 0.0), (0.0182, 0.0)], wheel_silver, subsurf=0)
+shroud = wheel_part("Steering_Column_Shroud", (0.12, 0.24, 0.10), (0, -0.15, -0.03), trim, bevel=0.03, segments=4)
+sub = shroud.modifiers.new("Subsurf", "SUBSURF")
+sub.levels = sub.render_levels = 1
 for side, tag in ((1, "Turn"), (-1, "Wiper")):
     st = cylinder(f"Steering_Stalk_{tag}", 0.007, 0.13, (0, 0, 0), black_plastic, 10)
     st.matrix_world = WM @ Matrix.Translation((side * 0.09, -0.06, 0.0)) @ Matrix.Rotation(math.radians(90), 4, "Y")
