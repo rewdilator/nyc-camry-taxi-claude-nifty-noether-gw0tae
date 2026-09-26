@@ -407,3 +407,22 @@ for lab, (x, y), lit in (("P", (60, 110), True), ("R", (60, 190), False), ("N", 
                   (255, 255, 255, 255) if lit else (150, 152, 158, 255))
 draw_centered(d, (0, 530, W, 580), "HYBRID", font(REG, 22), (120, 122, 128, 255))
 save(sg, "interior_shift_gate.png")
+
+# 13. Seat insert fabric (tileable, 512 px ~ 6 cm): a fine two-tone tweed with a small diamond
+#     pattern, like the LE's patterned centre panels; the bolster cloth is a plain weave (shader)
+W = H = 512
+fab = Image.new("RGBA", (W, H), (58, 58, 62, 255))
+d = ImageDraw.Draw(fab)
+rng = __import__("random").Random(7)
+for y in range(0, H, 4):                      # weft rows with slubs
+    for x in range(0, W, 4):
+        v = 50 + rng.randint(-10, 10) + (8 if (x // 4 + y // 4) % 2 else 0)
+        d.rectangle((x, y, x + 3, y + 3), fill=(v, v, v + 3, 255))
+step = 32
+for cy in range(0, H + step, step):           # diamond lattice, slightly lighter yarn
+    for cx in range(0, W + step, step):
+        ox = (step // 2) if (cy // step) % 2 else 0
+        x0 = (cx + ox) % (W + step)
+        d.polygon(((x0, cy - 7), (x0 + 7, cy), (x0, cy + 7), (x0 - 7, cy)), fill=(84, 84, 89, 255))
+        d.polygon(((x0, cy - 3), (x0 + 3, cy), (x0, cy + 3), (x0 - 3, cy)), fill=(46, 46, 50, 255))
+save(fab, "interior_seat_fabric.png")

@@ -136,22 +136,26 @@ rebuilds it like a real NYC yellow cab:
 - **Seats:** the source's low-poly seats are replaced by sculpted upholstery. Every cushion,
   backrest and head restraint is lofted from cross-sections and smoothed (subdivision), so the
   seams and surfaces are curved like sewn upholstery rather than boxes. The centre panel of each
-  sitting face is a second fabric, as on the LE's two-tone cloth, framed by a sewn seam groove and
-  crossed by stitched pleats. Both fabrics have a woven (warp and weft) surface texture.
-  - **Front seats:** base on steel rails, side shield and recline lever. The cushion has thigh
+  sitting face is a patterned fabric (a fine tweed with a diamond lattice, from a tileable swatch
+  box-projected onto the seat), as on the LE's two-tone cloth. It is framed by a sewn seam groove
+  with a round piping cord on each side and crossed by stitched pleats. The bolster cloth has a
+  woven (warp and weft) surface texture.
+  - **Front seats:** base on steel rails, a moulded outboard side shield with the recline lever (and
+    the height-adjust pump lever on the driver's seat). The cushion has thigh
     bolsters and a raised, rolled front edge. The backrest has side bolsters, a lumbar bulge and
     shoulders narrowing to the top. The head restraint is a rounded pad on two chrome posts in
-    guides.
+    guides, one with the release button.
   - **Rear bench:** separate cushions and backrests for the two contoured outboard seats and the
     flatter centre seat, a fold-down centre armrest with pull tab, three head restraints and
     child-seat anchor tags.
 - **Steering wheel:** modelled on a photo of the XV70 wheel. A thick 370 mm urethane rim (the
-  LE's wheel isn't leather), oval in section and swelling into thumb rests at 9 and 3 o'clock, with:
+  LE's wheel isn't leather) with a satin finish, oval in section, swelling into thumb rests at 9
+  and 3 o'clock and stitched round its inner edge, with:
   - one moulded spoke body, as on the real wheel: the two side spokes and the lower spoke that
     narrows into a V down to six o'clock, swept from its outline with rounded (subdivided) edges
     and running into the rim
-  - a large cushioned airbag pad, wider at the top and narrowing into the lower spoke, carrying the
-    A+ badge
+  - a large cushioned airbag pad, wider at the top and narrowing into the lower spoke, with a dark
+    shut line round it, carrying the A+ badge
   - piano-black switch panels set flush into the side spokes: a round four-way pad with a centre
     button in a silver ring, two keys above it and two below (audio on the left, display and cruise
     on the right)

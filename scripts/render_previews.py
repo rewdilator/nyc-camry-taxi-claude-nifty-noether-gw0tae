@@ -65,6 +65,14 @@ front_fill.name = front_fill.data.name = "CabinLightFront"
 front_fill.location = (0, -0.45, 1.26)
 front_fill.data.energy, front_fill.data.size = 10, 0.6
 sc.collection.objects.link(front_fill)
+# daylight through the windscreen onto the wheel and front seats: a soft panel above the dash
+screen_fill = light.copy()
+screen_fill.data = light.data.copy()
+screen_fill.name = screen_fill.data.name = "CabinLightWindscreen"
+screen_fill.location = (0.1, -0.95, 1.22)
+screen_fill.rotation_euler = (math.radians(-60), 0, 0)      # facing back and down into the cabin
+screen_fill.data.energy, screen_fill.data.size = 18, 0.9
+sc.collection.objects.link(screen_fill)
 bg = sc.world.node_tree.nodes["Background"].inputs["Strength"]
 bg_day = bg.default_value
 OPENINGS = [o for o in bpy.data.objects if "open" in o.keys()]
@@ -77,6 +85,7 @@ for name in views:
     light.location = (0, 1.85, 1.25) if v == "trunk" else (0, 0.75, 1.24)
     light.data.energy = 40 if v == "trunk" else 13
     front_fill.hide_render = v not in INTERIOR
+    screen_fill.hide_render = v not in INTERIOR
     # inside the car, the sky only reaches the cabin through tinted glass: brighten it for the shot
     bg.default_value = bg_day * (1.8 if v in INTERIOR else 1.0)
     if v in INTERIOR:

@@ -424,7 +424,38 @@ for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
             (x + dx, -0.10, FLOOR_Z + 0.0175), steel, bevel=0.004)
 
 # Cushions on the bases, overlapping the foot of each source seat back.
-insert_mat = material("Interior_Seat_Insert", (0.055, 0.055, 0.06, 1), rough=0.95, sheen=0.25, weave=(420, 0.6))
+def fabric_material(name, image, tile, tint, bump=0.5):
+    """Cloth from a tileable swatch, box-projected in object space (the seat meshes have no UVs):
+    the swatch tints the base colour and drives a bump for the yarn relief."""
+    m = material(name, tint, rough=0.93, sheen=0.3)
+    nt = m.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    mp = nt.nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (1 / tile, 1 / tile, 1 / tile)
+    tx = nt.nodes.new("ShaderNodeTexImage")
+    tx.image = load_image(image)
+    tx.projection = "BOX"
+    tx.projection_blend = 0.3
+    mul = nt.nodes.new("ShaderNodeMix")
+    mul.data_type = "RGBA"
+    mul.blend_type = "MULTIPLY"
+    mul.inputs["Factor"].default_value = 1.0
+    mul.inputs[6].default_value = tint
+    bump_ = nt.nodes.new("ShaderNodeBump")
+    bump_.inputs["Strength"].default_value = bump
+    bump_.inputs["Distance"].default_value = 0.0006
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    nt.links.new(mp.outputs["Vector"], tx.inputs["Vector"])
+    nt.links.new(tx.outputs["Color"], mul.inputs[7])
+    nt.links.new(mul.outputs[2], b.inputs["Base Color"])
+    nt.links.new(tx.outputs["Color"], bump_.inputs["Height"])
+    nt.links.new(bump_.outputs["Normal"], b.inputs["Normal"])
+    return m
+
+
+# patterned centre-panel cloth (a 6 cm tile of fine tweed with a diamond lattice)
+insert_mat = fabric_material("Interior_Seat_Insert", "interior_seat_fabric.png", 0.06, (0.32, 0.32, 0.34, 1))
 
 
 def smoothstep(a, b, v):
@@ -485,6 +516,30 @@ def pad_mesh(name, W, L, T, bolster=0.0, bol_start=0.62, bol_fade=(0.72, 0.95), 
                     f.material_index = 1
     bm_.faces.new(rings[0][::-1])
     bm_.faces.new(rings[-1])
+    if seam and insert_u > 0:
+        # piping: a round cord sewn into the seam between the centre panel and each bolster
+        for sgn_ in (-1, 1):
+            pts = []
+            for j in range(nt):
+                t = j / (nt - 1)
+                if not insert_t[0] - 0.01 < t < insert_t[1] + 0.01:
+                    continue
+                ring = rings[j][:nx]
+                target = sgn_ * insert_u
+                us = [-math.cos(math.pi * i / (nx - 1)) for i in range(nx)]
+                k = min(range(nx), key=lambda i: abs(us[i] - target))
+                pts.append(ring[k].co.copy() + Vector((0, -0.0015, 0)))
+            tube_ring = []
+            for q, pt in enumerate(pts):
+                tan = (pts[min(q + 1, len(pts) - 1)] - pts[max(q - 1, 0)]).normalized()
+                side_ = tan.cross(Vector((0, 1, 0))).normalized()
+                up_ = side_.cross(tan).normalized()
+                tube_ring.append([bm_.verts.new(pt + (side_ * math.cos(a) + up_ * math.sin(a)) * 0.0028)
+                                  for a in np.linspace(0, 2 * math.pi, 7)[:-1]])
+            for r0, r1 in zip(tube_ring, tube_ring[1:]):
+                for k in range(6):
+                    f = bm_.faces.new((r0[k], r0[(k + 1) % 6], r1[(k + 1) % 6], r1[k]))
+                    f.material_index = 0
     bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces)
     me_ = bpy.data.meshes.new(name)
     bm_.to_mesh(me_)
@@ -546,7 +601,7 @@ for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckl
 # 3d. Seat backs, head restraints, steering wheel (replacing the source's low-poly ones)
 # ---------------------------------------------------------------------------
 # the LE's wheel and shift knob are urethane, not leather: matte, with a fine moulded grain
-leather = material("Interior_Wheel_Urethane", (0.032, 0.032, 0.034, 1), rough=0.62, grain=(2600, 0.18))
+leather = material("Interior_Wheel_Urethane", (0.032, 0.032, 0.034, 1), rough=0.46, coat=0.08, grain=(2600, 0.2))
 wheel_silver = material("Interior_Wheel_Satin_Silver", (0.78, 0.78, 0.80, 1), rough=0.22, metal=1.0)
 piano = material("Interior_Piano_Black", (0.01, 0.01, 0.011, 1), rough=0.08, coat=1.0)
 accent = material("Interior_Dash_Accent_Satin", (0.22, 0.22, 0.23, 1), rough=0.3, metal=1.0, grain=(2500, 0.08))
@@ -582,15 +637,32 @@ def seat_back(tag, x, pivot, tilt, width, height, thick, headrest=(0.27, 0.10, 0
             box(f"Seat_Headrest_Guide_{tag}_{'L' if px > 0 else 'R'}", (0.02, 0.02, 0.012), (0, 0, 0), black_plastic,
                 bevel=0.004).matrix_world = (Matrix.Translation(pivot) @ Matrix.Rotation(tilt, 4, "X")
                                              @ Matrix.Translation((x + px, 0.01, height - 0.004)))
+            if px > 0:        # the release button on one guide
+                box(f"Seat_Headrest_Button_{tag}", (0.012, 0.012, 0.006), (0, 0, 0), black_plastic,
+                    bevel=0.003).matrix_world = (Matrix.Translation(pivot) @ Matrix.Rotation(tilt, 4, "X")
+                                                 @ Matrix.Translation((x + px + 0.013, 0.01, height - 0.001)))
 
 
 # front seats: foot of the backrest on the rear of the cushion, reclined 10 degrees
 for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
     seat_back(tag, x, Vector((0, 0.165, SEAT_Z + 0.05)), math.radians(-10), 0.52, 0.60, 0.10)
     xo = x + math.copysign(0.265, x)
-    box(f"Seat_Side_Shield_{tag}", (0.022, 0.34, 0.10), (xo, -0.10, SEAT_Z + 0.02), trim, bevel=0.008)
-    box(f"Seat_Recline_Lever_{tag}", (0.018, 0.10, 0.02), (xo + math.copysign(0.012, x), 0.02, SEAT_Z + 0.045),
-        black_plastic, bevel=0.006)
+    # moulded outboard side shield over the seat frame, with the recline lever at its rear and, on the
+    # driver's seat, the height-adjust pump lever
+    sh = box(f"Seat_Side_Shield_{tag}", (0.026, 0.44, 0.11), (xo, -0.13, SEAT_Z + 0.015), trim, bevel=0.012,
+             segments=3)
+    sub = sh.modifiers.new("Subsurf", "SUBSURF")
+    sub.levels = sub.render_levels = 1
+    sx_ = math.copysign(1, x)
+    lever = box(f"Seat_Recline_Lever_{tag}", (0.014, 0.13, 0.026), (xo + sx_ * 0.018, 0.02, SEAT_Z + 0.05),
+                black_plastic, bevel=0.007, segments=3, rot=(math.radians(8), 0, 0))
+    sub = lever.modifiers.new("Subsurf", "SUBSURF")
+    sub.levels = sub.render_levels = 1
+    if tag == "Driver":
+        pump = box("Seat_Height_Lever_Driver", (0.014, 0.10, 0.03), (xo + sx_ * 0.018, -0.20, SEAT_Z + 0.02),
+                   black_plastic, bevel=0.008, segments=3, rot=(math.radians(-18), 0, 0))
+        sub = pump.modifiers.new("Subsurf", "SUBSURF")
+        sub.levels = sub.render_levels = 1
 
 # rear bench back: two outboard seats and a narrower centre with a fold-down armrest, three restraints
 RB_PIVOT = Vector((0, REAR_Y1 - 0.02, SEAT_Z + CUSH_T - 0.01))
@@ -649,6 +721,26 @@ me.materials.append(leather)
 me.shade_smooth()
 rim = add(bpy.data.objects.new(me.name, me))
 rim.matrix_world = WM
+# stitched seam round the inside of the rim: a darker seam band with thread dashes over it
+stitch_thread = material("Interior_Wheel_Stitching", (0.11, 0.11, 0.115, 1), rough=0.7)
+bm = bmesh.new()
+nseg = 180
+for i in range(nseg):
+    a0, a1 = 2 * math.pi * i / nseg, 2 * math.pi * (i + 0.55) / nseg
+    quad_ = []
+    for a, dy in ((a0, -0.0012), (a1, -0.0012), (a1, 0.0012), (a0, 0.0012)):
+        g = 1 + 0.28 * max(math.exp(-((a - math.radians(-8)) / 0.30) ** 2),
+                           math.exp(-((a - math.radians(188)) / 0.30) ** 2))
+        rr = R_RIM - r_rim * g - 0.0004
+        quad_.append(bm.verts.new((rr * math.cos(a), dy, rr * math.sin(a))))
+    bm.faces.new(quad_)
+me_st = bpy.data.meshes.new("Steering_Wheel_Stitching")
+bm.to_mesh(me_st)
+bm.free()
+me_st.materials.append(stitch_thread)
+st_ob = add(bpy.data.objects.new(me_st.name, me_st))
+st_ob.matrix_world = WM
+
 
 
 def wheel_part(name, size, local, mat, bevel=0.0, segments=3, rot_y=0.0):
@@ -705,6 +797,11 @@ hub = pad_mesh("Steering_Wheel_Hub", 0.18, 0.148, 0.058, taper=0.34, round_start
                nx=16, nt=16, mats=(leather, leather))
 hub.matrix_world = WM @ Matrix.Translation((0, 0.012, 0.066)) @ Matrix(
     ((1, 0, 0, 0), (0, -1, 0, 0), (0, 0, -1, 0), (0, 0, 0, 1)))      # x, n, t -> x, -n (to driver), -t
+# shut line round the airbag cover: a slightly larger dark shell just behind it reads as the gap
+gap = pad_mesh("Steering_Wheel_Hub_Gap", 0.186, 0.154, 0.05, taper=0.34, round_start=True, insert_u=0.0,
+               nx=16, nt=16, mats=(black_plastic, black_plastic))
+gap.matrix_world = WM @ Matrix.Translation((0, 0.006, 0.069)) @ Matrix(
+    ((1, 0, 0, 0), (0, -1, 0, 0), (0, 0, -1, 0), (0, 0, 0, 1)))
 for side in (-1, 1):
     tag = "L" if side > 0 else "R"
     panel = [(side * 0.094, 0.024), (side * 0.158, 0.018), (side * 0.158, -0.036), (side * 0.094, -0.042)]
