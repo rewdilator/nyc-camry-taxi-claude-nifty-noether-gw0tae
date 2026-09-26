@@ -2,7 +2,7 @@
 
     python3 scripts/render_previews.py [samples] [view,view,...]
 Views: fl side rr rside door rdoor rear front top
-Interior views (lit by a temporary cabin light): cabin tv dash pdash
+Interior views (lit by a temporary cabin light): cabin tv dash pdash wheel seats shifter fseat
 Add "_open" to any view to render it with all four doors and the trunk open (e.g. fl_open).
 Output: renders/preview_<view>.png
 """
@@ -45,6 +45,10 @@ INTERIOR = {
     "tv": ((-0.05, 0.85, 1.0), (-0.05, 0.3, 0.86), 30),     # Taxi TV and card reader
     "dash": ((0.36, -0.1, 1.18), (0.0, -0.8, 0.95), 22),    # driver's seat: taximeter, monitor
     "pdash": ((0.20, -0.18, 1.12), (-0.40, -0.85, 0.90), 26),  # centre stack and passenger dash
+    "wheel": ((0.38, -0.12, 1.02), (0.375, -0.485, 0.90), 40),  # steering wheel close-up
+    "seats": ((0.0, 0.28, 1.25), (0.0, -0.35, 0.75), 24),      # front seats from behind (partition hidden)
+    "shifter": ((0.12, -0.25, 1.00), (0.0, -0.49, 0.80), 35),  # console and shift lever
+    "fseat": ((0.42, -0.62, 1.02), (-0.38, -0.02, 0.78), 24),   # passenger seat seen from the driver's side
 }
 light = bpy.data.objects.new("CabinLight", bpy.data.lights.new("CabinLight", "AREA"))
 light.data.energy, light.data.size = 10, 0.5

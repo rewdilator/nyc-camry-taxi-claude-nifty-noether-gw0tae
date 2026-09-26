@@ -391,3 +391,19 @@ for k, lab in enumerate(labels):
     d.rounded_rectangle((x0, y0, x0 + 115, y0 + 62), radius=10, fill=(44, 46, 52, 255))
     draw_centered(d, (x0, y0, x0 + 115, y0 + 62), lab, font(BOLD, 24), WHITE)
 save(cp, "interior_climate_panel.png")
+
+# 12. Shift gate panel on the console (Camry Hybrid: P-R-N-D-B in a staggered gate), 1:2
+W, H = 300, 600
+sg = Image.new("RGBA", (W, H), (8, 8, 9, 255))
+d = ImageDraw.Draw(sg)
+d.rounded_rectangle((6, 6, W - 6, H - 6), radius=26, outline=(120, 122, 128, 255), width=6)   # satin rim
+gate = [(150, 110), (150, 190), (110, 190), (110, 270), (150, 270), (150, 350), (150, 430), (190, 430),
+        (190, 500)]                                         # P down to R, across to N, D, then B
+d.line(gate, fill=(0, 0, 0, 255), width=26, joint="curve")
+d.line(gate, fill=(30, 30, 34, 255), width=14, joint="curve")
+for lab, (x, y), lit in (("P", (60, 110), True), ("R", (60, 190), False), ("N", (60, 270), False),
+                         ("D", (60, 350), False), ("B", (240, 500), False)):
+    draw_centered(d, (x - 30, y - 30, x + 30, y + 30), lab, font(BOLD, 44),
+                  (255, 255, 255, 255) if lit else (150, 152, 158, 255))
+draw_centered(d, (0, 530, W, 580), "HYBRID", font(REG, 22), (120, 122, 128, 255))
+save(sg, "interior_shift_gate.png")

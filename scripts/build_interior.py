@@ -385,13 +385,88 @@ for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
             (x + dx, -0.10, FLOOR_Z + 0.0175), steel, bevel=0.004)
 
 # Cushions on the bases, overlapping the foot of each source seat back.
+insert_mat = material("Interior_Seat_Insert", (0.052, 0.052, 0.056, 1), rough=0.95, sheen=0.5, grain=(700, 0.5))
+
+
+def smoothstep(a, b, v):
+    t = min(max((v - a) / (b - a), 0.0), 1.0)
+    return t * t * (3 - 2 * t)
+
+
+def pad_mesh(name, W, L, T, bolster=0.0, bol_start=0.62, bol_fade=(0.72, 0.95), lumbar=0.0, lumbar_t=0.3,
+             taper=0.0, round_end=True, round_start=False, insert_u=0.56, insert_t=(0.06, 0.86), rise=0.0,
+             nx=16, nt=18, mats=None):
+    """An upholstered pad (seat back, cushion or head restraint), lofted from cross-sections.
+
+    Local frame: x across, n through the pad (the sitting face is -n), t along its length (0..1 over
+    L). Each cross-section has a flat-ish centre, side bolsters that rise and curl back at the edges,
+    and a flatter back; the ends roll over. Subdivision smooths it into sewn upholstery, and the centre
+    of the sitting face takes the insert fabric (material 1)."""
+    bm_ = bmesh.new()
+    rings = []
+    for j in range(nt):
+        t = j / (nt - 1)
+        w = W / 2 * (1 - taper * smoothstep(0.62, 1.0, t))
+        sc = 1.0
+        if round_end and t > 0.78:
+            sc = math.sqrt(max(0.04, 1 - ((t - 0.78) / 0.22) ** 2))
+        if round_start and t < 0.22:
+            sc = min(sc, math.sqrt(max(0.04, 1 - ((0.22 - t) / 0.22) ** 2)))
+        fade = 1 - smoothstep(bol_fade[0], bol_fade[1], t)
+        front, back = [], []
+        for i in range(nx):
+            u = -math.cos(math.pi * i / (nx - 1))
+            au = abs(u)
+            n = -(T / 2) * sc - bolster * smoothstep(bol_start, 0.9, au) * fade * sc
+            n -= lumbar * math.exp(-((t - lumbar_t) / 0.16) ** 2)
+            n -= rise * smoothstep(0.55, 0.9, t) * sc
+            n += T * 0.45 * smoothstep(0.9, 1.0, au) * sc          # the edge curls round to the back
+            front.append((u * w, n, t * L))
+        for i in reversed(range(nx)):
+            u = -math.cos(math.pi * i / (nx - 1))
+            back.append((u * w * 0.97, (T / 2) * sc + 0.008 * (1 - u * u) * sc, t * L))
+        rings.append([bm_.verts.new(p_) for p_ in front + back])
+    m_ = 2 * nx
+    for j in range(nt - 1):
+        t = (j + 0.5) / (nt - 1)
+        for k in range(m_):
+            f = bm_.faces.new((rings[j][k], rings[j][(k + 1) % m_], rings[j + 1][(k + 1) % m_], rings[j + 1][k]))
+            if k < nx - 1:
+                u = -math.cos(math.pi * (k + 0.5) / (nx - 1))
+                if abs(u) < insert_u and insert_t[0] < t < insert_t[1]:
+                    f.material_index = 1
+    bm_.faces.new(rings[0][::-1])
+    bm_.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces)
+    me_ = bpy.data.meshes.new(name)
+    bm_.to_mesh(me_)
+    bm_.free()
+    for m in (mats or (cloth, insert_mat)):
+        me_.materials.append(m)
+    me_.shade_smooth()
+    ob = bpy.data.objects.new(name, me_)
+    sub = ob.modifiers.new("Subsurf", "SUBSURF")
+    sub.levels = sub.render_levels = 2
+    return add(ob)
+
+
+def place_back(ob, pivot, tilt, x, z0=0.0):
+    """Seat-back frame: upright pad reclined by `tilt` about its foot at `pivot`."""
+    ob.matrix_world = Matrix.Translation(pivot) @ Matrix.Rotation(tilt, 4, "X") @ Matrix.Translation((x, 0, z0))
+
+
+def place_cushion(ob, x, y_rear, z, pitch=math.radians(5)):
+    """Cushion frame: the pad's length runs forward (-Y) from the backrest, its sitting face up."""
+    to_car = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, -1, 0, 0), (0, 0, 0, 1)))   # x, n, t -> x, -t, -n
+    ob.matrix_world = (Matrix.Translation((x, y_rear, z)) @ Matrix.Rotation(-pitch, 4, "X") @ to_car)
+
+
 CUSH_T = 0.075
 for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
-    box(f"Seat_Cushion_{tag}", (0.50, 0.52, CUSH_T), (x, -0.16, SEAT_Z + CUSH_T / 2), cloth,
-        bevel=0.03, segments=4)
-    for s in (-1, 1):  # side bolsters
-        box(f"Seat_Bolster_{tag}_{'O' if s * x > 0 else 'I'}", (0.07, 0.46, 0.035),
-            (x + s * 0.215, -0.17, SEAT_Z + CUSH_T + 0.012), cloth, bevel=0.016, segments=4)
+    # sculpted cushion: thigh bolsters, a slight dish, and a raised, rolled front edge
+    place_cushion(pad_mesh(f"Seat_Cushion_{tag}", 0.51, 0.52, CUSH_T + 0.02, bolster=0.035, bol_start=0.6,
+                           bol_fade=(0.8, 1.0), rise=0.012, taper=0.06, insert_u=0.52, insert_t=(0.1, 0.84)),
+                  x, 0.10, SEAT_Z + CUSH_T / 2 + 0.005)
     # front belt: stowed down the B-pillar from the D-ring; buckle stalk on the console side
     xo = math.copysign(1, x)
     box(f"Seat_Belt_DRing_{tag}", (0.012, 0.03, 0.06), (xo * 0.665, 0.235, 1.22), black_plastic, bevel=0.004)
@@ -406,18 +481,20 @@ rear_hw = min(min(abs(cast((0, 0.7, SEAT_Z + 0.12), (s, 0, 0)).x) for s in (-1, 
 REAR_Y0, REAR_Y1 = 0.46, 0.96
 box("Seat_Base_Rear", (2 * rear_hw - 0.04, REAR_Y1 - REAR_Y0 - 0.02, SEAT_Z - FLOOR_Z),
     (0, (REAR_Y0 + REAR_Y1) / 2 + 0.01, (SEAT_Z + FLOOR_Z) / 2), cloth, bevel=0.02)
-box("Seat_Cushion_Rear", (2 * rear_hw, REAR_Y1 - REAR_Y0, CUSH_T + 0.01),
-    (0, (REAR_Y0 + REAR_Y1) / 2, SEAT_Z + (CUSH_T + 0.01) / 2), cloth, bevel=0.035, segments=4)
-for x in (-0.43, 0.43):  # outboard seat contours
-    box(f"Seat_Rear_Bolster_{'L' if x > 0 else 'R'}", (0.05, 0.40, 0.022),
-        (x + math.copysign(0.2, x), 0.73, SEAT_Z + CUSH_T + 0.014), cloth, bevel=0.01)
+# rear bench: two contoured outboard seats and a flatter centre seat, each its own cushion
+RW_OUT = 0.47
+RW_C = 2 * rear_hw - 2 * RW_OUT
+for x, w, tag, bol in ((rear_hw - RW_OUT / 2, RW_OUT, "L", 0.022), (0.0, RW_C, "C", 0.006),
+                       (-(rear_hw - RW_OUT / 2), RW_OUT, "R", 0.022)):
+    place_cushion(pad_mesh(f"Seat_Cushion_Rear_{tag}", w + 0.01, REAR_Y1 - REAR_Y0, CUSH_T + 0.02, bolster=bol,
+                           bol_fade=(0.8, 1.0), rise=0.008, insert_u=0.5, insert_t=(0.1, 0.84)),
+                  x, REAR_Y1, SEAT_Z + CUSH_T / 2 + 0.005, pitch=math.radians(7))
 for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckles and latches
     box(f"Seat_Belt_Buckle_Rear_{i}", (0.03, 0.02, 0.07), (x, REAR_Y1 - 0.03, SEAT_Z + CUSH_T + 0.03),
         black_plastic, bevel=0.006, rot=(math.radians(-20), 0, 0))
 # ---------------------------------------------------------------------------
 # 3d. Seat backs, head restraints, steering wheel (replacing the source's low-poly ones)
 # ---------------------------------------------------------------------------
-insert_mat = material("Interior_Seat_Insert", (0.052, 0.052, 0.056, 1), rough=0.95, sheen=0.5, grain=(700, 0.5))
 # the LE's wheel and shift knob are urethane, not leather: matte, with a fine moulded grain
 leather = material("Interior_Wheel_Urethane", (0.032, 0.032, 0.034, 1), rough=0.62, grain=(2600, 0.18))
 accent = material("Interior_Dash_Accent_Satin", (0.22, 0.22, 0.23, 1), rough=0.3, metal=1.0, grain=(2500, 0.08))
@@ -434,31 +511,29 @@ def tilted(name, size, pivot, local, tilt, mat, bevel=0.0, segments=3, subsurf=0
     return ob
 
 
-def seat_back(tag, x, pivot, tilt, width, height, thick, headrest=(0.26, 0.085, 0.165), bolsters=True):
-    """Backrest pad + side bolsters + insert + head restraint on two chrome posts, tilted about its foot."""
-    tilted(f"Seat_Back_{tag}", (width - 0.02, thick, height), pivot, (x, 0, height / 2), tilt, cloth,
-           bevel=0.03, segments=4)
-    tilted(f"Seat_Back_Insert_{tag}", (width * 0.6, 0.008, height * 0.72), pivot, (x, -thick / 2, height * 0.46),
-           tilt, insert_mat, bevel=0.004)
-    if bolsters:
-        for sx in (-1, 1):
-            b = tilted(f"Seat_Back_Bolster_{tag}_{'L' if sx > 0 else 'R'}", (0.07, thick + 0.035, height * 0.82),
-                       pivot, (x + sx * (width / 2 - 0.03), -0.012, height * 0.43), tilt, cloth,
-                       bevel=0.028, segments=4)
-            b.rotation_euler.z += math.radians(-10 * sx)
+def seat_back(tag, x, pivot, tilt, width, height, thick, headrest=(0.27, 0.10, 0.18), bolsters=True):
+    """Sculpted backrest (bolsters, lumbar bulge, shoulders narrowing to the top) with a head restraint
+    on two chrome posts, reclined about its foot."""
+    back = pad_mesh(f"Seat_Back_{tag}", width, height, thick, bolster=0.05 if bolsters else 0.012,
+                    bol_start=0.6, lumbar=0.014, taper=0.2 if bolsters else 0.05,
+                    insert_u=0.55, insert_t=(0.05, 0.8))
+    place_back(back, pivot, tilt, x)
     if headrest:
         hw, hd, hh = headrest
-        tilted(f"Seat_Headrest_{tag}", (hw, hd, hh), pivot, (x, 0.005, height + 0.075 + hh / 2), tilt, cloth,
-               bevel=0.035, segments=4)
+        hr = pad_mesh(f"Seat_Headrest_{tag}", hw, hh, hd, taper=0.12, round_start=True, insert_u=0.0, nx=12, nt=12)
+        place_back(hr, pivot, tilt, x, height + 0.06)
         for px in (-0.06, 0.06):
             post = cylinder(f"Seat_Headrest_Post_{tag}_{'L' if px > 0 else 'R'}", 0.0055, 0.09, (0, 0, 0), chrome, 10)
             post.matrix_world = (Matrix.Translation(pivot) @ Matrix.Rotation(tilt, 4, "X")
-                                 @ Matrix.Translation((x + px, 0.0, height + 0.035)))
+                                 @ Matrix.Translation((x + px, 0.01, height + 0.03)))
+            box(f"Seat_Headrest_Guide_{tag}_{'L' if px > 0 else 'R'}", (0.02, 0.02, 0.012), (0, 0, 0), black_plastic,
+                bevel=0.004).matrix_world = (Matrix.Translation(pivot) @ Matrix.Rotation(tilt, 4, "X")
+                                             @ Matrix.Translation((x + px, 0.01, height - 0.004)))
 
 
 # front seats: foot of the backrest on the rear of the cushion, reclined 10 degrees
 for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
-    seat_back(tag, x, Vector((0, 0.165, SEAT_Z + 0.05)), math.radians(-10), 0.50, 0.58, 0.085)
+    seat_back(tag, x, Vector((0, 0.165, SEAT_Z + 0.05)), math.radians(-10), 0.52, 0.60, 0.10)
     xo = x + math.copysign(0.265, x)
     box(f"Seat_Side_Shield_{tag}", (0.022, 0.34, 0.10), (xo, -0.10, SEAT_Z + 0.02), trim, bevel=0.008)
     box(f"Seat_Recline_Lever_{tag}", (0.018, 0.10, 0.02), (xo + math.copysign(0.012, x), 0.02, SEAT_Z + 0.045),
@@ -468,19 +543,14 @@ for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
 RB_PIVOT = Vector((0, REAR_Y1 - 0.02, SEAT_Z + CUSH_T - 0.01))
 RB_TILT = math.radians(-26)
 RB_H, RB_T = 0.54, 0.11
-tilted("Seat_Rear_Back", (2 * rear_hw - 0.01, RB_T, RB_H), RB_PIVOT, (0, 0, RB_H / 2), RB_TILT, cloth,
-       bevel=0.03, segments=4)
-for x, w, tag in ((0.40, 0.44, "L"), (-0.40, 0.44, "R")):
-    seat_back(f"Rear_{tag}", x, RB_PIVOT + Vector((0, -0.012, 0)), RB_TILT, w, RB_H - 0.02, RB_T - 0.02,
-              bolsters=False)
-    tilted(f"Seat_Rear_Bolster_Back_{tag}", (0.07, RB_T + 0.03, RB_H * 0.8), RB_PIVOT,
-           (math.copysign(rear_hw - 0.045, x), -0.015, RB_H * 0.42), RB_TILT, cloth, bevel=0.028, segments=4)
+for x, w, tag, bol in ((rear_hw - RW_OUT / 2, RW_OUT, "L", True), (-(rear_hw - RW_OUT / 2), RW_OUT, "R", True)):
+    seat_back(f"Rear_{tag}", x, RB_PIVOT, RB_TILT, w + 0.01, RB_H, RB_T, bolsters=bol)
+seat_back("Rear_C", 0.0, RB_PIVOT, RB_TILT, RW_C + 0.01, RB_H - 0.03, RB_T, headrest=(0.20, 0.085, 0.13),
+          bolsters=False)
 tilted("Seat_Rear_Armrest", (0.26, 0.012, RB_H * 0.72), RB_PIVOT, (0, -RB_T / 2 - 0.004, RB_H * 0.45), RB_TILT,
        insert_mat, bevel=0.006)
 tilted("Seat_Rear_Armrest_Pull", (0.06, 0.012, 0.018), RB_PIVOT, (0, -RB_T / 2 - 0.01, RB_H * 0.78), RB_TILT,
        black_plastic, bevel=0.004)
-tilted("Seat_Headrest_Rear_C", (0.20, 0.075, 0.12), RB_PIVOT, (0, 0.0, RB_H + 0.07), RB_TILT, cloth,
-       bevel=0.03, segments=4)
 for x in (-0.25, 0.25):     # child-seat anchor tags in the seat bight
     box(f"Seat_Rear_Isofix_{'L' if x > 0 else 'R'}", (0.035, 0.012, 0.03), (x, REAR_Y1 - 0.045, SEAT_Z + CUSH_T + 0.02),
         black_plastic, bevel=0.004)
@@ -503,15 +573,18 @@ W_TILT = math.radians(24)                   # top of the wheel leans forward
 WM = Matrix.Translation(WC) @ Matrix.Rotation(W_TILT, 4, "X")
 R_RIM, r_rim, r_rim_y = 0.1875, 0.0155, 0.0185     # rim section is oval, deeper than it is wide
 bm = bmesh.new()
-nu, nv = 48, 12
+nu, nv = 72, 12
 ring = []
 for i in range(nu):
     a = 2 * math.pi * i / nu
     row = []
     for j in range(nv):
         b = 2 * math.pi * j / nv
-        rr = R_RIM + r_rim * math.cos(b)
-        row.append(bm.verts.new((rr * math.cos(a), r_rim_y * math.sin(b), rr * math.sin(a))))
+        # thumb rests: the rim swells where the spokes meet it at 9 and 3 o'clock
+        g = 1 + 0.28 * max(math.exp(-((a - math.radians(-8)) / 0.30) ** 2),
+                           math.exp(-((a - math.radians(188)) / 0.30) ** 2))
+        rr = R_RIM + r_rim * g * math.cos(b)
+        row.append(bm.verts.new((rr * math.cos(a), r_rim_y * g * math.sin(b), rr * math.sin(a))))
     ring.append(row)
 for i in range(nu):
     for j in range(nv):
@@ -574,21 +647,51 @@ def rounded(poly, r=0.012, n=4):
 
 
 # airbag pad: a rounded trapezoid, wider at the top, with the badge in the middle
-PAD = [(-0.080, 0.050), (0.080, 0.050), (0.060, -0.068), (-0.060, -0.068)]
-wheel_slab("Steering_Wheel_Hub", rounded(PAD, 0.022, 6), -0.015, 0.042, leather, bevel=0.012)
-wheel_part("Steering_Wheel_Badge", (0.045, 0.004, 0.03), (0, 0.043, 0.0), chrome, bevel=0.012, segments=4)
+# airbag cover: a domed pad, wider at the top than the bottom, lofted from top (t=0) to bottom
+hub = pad_mesh("Steering_Wheel_Hub", 0.165, 0.122, 0.05, taper=0.3, round_start=True, insert_u=0.0,
+               nx=14, nt=14, mats=(leather, leather))
+hub.matrix_world = WM @ Matrix.Translation((0, 0.012, 0.052)) @ Matrix(
+    ((1, 0, 0, 0), (0, -1, 0, 0), (0, 0, -1, 0), (0, 0, 0, 1)))      # x, n, t -> x, -n (to driver), -t
+# oval emblem: a chrome elliptical ring with a crossbar, set into the pad
+bm = bmesh.new()
+for k in range(40):
+    a = 2 * math.pi * k / 40
+    for rr_ in (1.0, 0.78):
+        bm.verts.new((0.024 * rr_ * math.cos(a), 0.0, 0.016 * rr_ * math.sin(a)))
+bm.verts.ensure_lookup_table()
+for k in range(40):
+    k2 = (k + 1) % 40
+    bm.faces.new((bm.verts[2 * k], bm.verts[2 * k2], bm.verts[2 * k2 + 1], bm.verts[2 * k + 1]))
+me = bpy.data.meshes.new("Steering_Wheel_Badge")
+bm.to_mesh(me)
+bm.free()
+me.materials.append(chrome)
+badge = add(bpy.data.objects.new(me.name, me))
+badge.modifiers.new("Solidify", "SOLIDIFY").thickness = 0.003
+badge.matrix_world = WM @ Matrix.Translation((0, 0.040, -0.004))
+wheel_part("Steering_Wheel_Badge_Bar", (0.036, 0.003, 0.005), (0, 0.040, -0.004), chrome, bevel=0.0015)
 for side in (-1, 1):
     tag = "L" if side > 0 else "R"
     # side spoke: tapers from the pad out to the rim, carrying the switch panel
-    wheel_slab(f"Steering_Wheel_Spoke_{tag}", rounded([(side * 0.074, 0.030), (side * 0.182, 0.014),
+    wheel_slab(f"Steering_Wheel_Spoke_{tag}", rounded([(side * 0.066, 0.016), (side * 0.182, 0.014),
                                                       (side * 0.182, -0.030), (side * 0.070, -0.048)][::side], 0.008),
                -0.010, 0.020, trim, bevel=0.005)
     panel = [(side * 0.086, 0.022), (side * 0.150, 0.014), (side * 0.150, -0.024), (side * 0.084, -0.036)]
     wheel_slab(f"Steering_Wheel_Switch_Panel_{tag}", rounded(panel[::side], 0.006), 0.020, 0.024, black_plastic,
                bevel=0.002)
-    for k in range(4):
-        wheel_part(f"Steering_Wheel_Button_{tag}_{k}", (0.018, 0.005, 0.013),
-                   (side * (0.102 + 0.026 * (k % 2)), 0.026, 0.006 - 0.022 * (k // 2)), trim, bevel=0.003)
+    # Camry switch cluster: a round four-way pad (audio on the left spoke, display and cruise on the
+    # right) with a satin surround, and two small buttons outboard of it
+    pc = Vector((side * 0.108, 0.026, -0.004))
+    ring_ = cylinder(f"Steering_Wheel_Pad_Ring_{tag}", 0.0165, 0.004, (0, 0, 0), accent, 24)
+    ring_.matrix_world = WM @ Matrix.Translation(pc) @ Matrix.Rotation(math.radians(-90), 4, "X")
+    pad_ = cylinder(f"Steering_Wheel_Four_Way_{tag}", 0.0135, 0.006, (0, 0, 0), trim, 24)
+    pad_.matrix_world = WM @ Matrix.Translation(pc + Vector((0, 0.002, 0))) @ Matrix.Rotation(math.radians(-90), 4, "X")
+    for k, (dx, dz) in enumerate(((0, 0.0085), (0, -0.0085), (0.0085, 0), (-0.0085, 0))):
+        wheel_part(f"Steering_Wheel_Arrow_{tag}_{k}", (0.004, 0.002, 0.004), pc + Vector((dx, 0.0055, dz)),
+                   accent, bevel=0.001)
+    for k in range(2):
+        wheel_part(f"Steering_Wheel_Button_{tag}_{k}", (0.013, 0.005, 0.010),
+                   (side * 0.138, 0.025, 0.006 - 0.019 * k), trim, bevel=0.003)
     # satin trim along the lower edge of the spoke
     wheel_slab(f"Steering_Wheel_Spoke_Trim_{tag}", [(side * 0.074, -0.046), (side * 0.180, -0.028),
                                                     (side * 0.180, -0.034), (side * 0.072, -0.053)][::side],
@@ -631,12 +734,31 @@ if h is not None:
 
 box("Console_Base", (0.18, 0.86, 0.74 - FLOOR_Z), (0, -0.44, (0.74 + FLOOR_Z) / 2), trim, bevel=0.02)
 box("Console_Armrest", (0.19, 0.30, 0.05), (0, -0.10, SEAT_Z + 0.185), cloth, bevel=0.018, segments=4)
-box("Console_Shifter_Boot", (0.07, 0.10, 0.04), (0, -0.50, SEAT_Z + 0.18), trim, bevel=0.015)
-box("Console_Shift_Gate_Plate", (0.085, 0.16, 0.004), (0, -0.50, SEAT_Z + 0.202), accent, bevel=0.003)
-# the stubby lever the reviews mention: a short stem and a low knob
-cylinder("Console_Shifter_Stem", 0.009, 0.03, (0, -0.49, SEAT_Z + 0.215), black_plastic, 12)
-box("Console_Shifter_Knob", (0.04, 0.052, 0.055), (0, -0.49, SEAT_Z + 0.252), leather, bevel=0.018, segments=5)
-box("Console_Shifter_Knob_Trim", (0.042, 0.054, 0.005), (0, -0.49, SEAT_Z + 0.231), accent, bevel=0.0022)
+# Camry Hybrid shifter: a piano-black gate panel with the P-R-N-D-B staggered gate and a satin rim,
+# and a short lever with an egg-shaped urethane knob and a satin collar
+gate_mat = material("Interior_Shift_Gate", rough=0.08, image="interior_shift_gate.png", coat=1.0)
+box("Console_Shift_Surround", (0.11, 0.21, 0.02), (0, -0.50, SEAT_Z + 0.19), trim, bevel=0.012)
+gate_n = Vector((0, 0.10, 1)).normalized()
+quad("Console_Shift_Gate", (0, -0.50, SEAT_Z + 0.2012), 0.085, 0.17, gate_n, gate_mat)
+cylinder("Console_Shifter_Stem", 0.008, 0.045, (0, -0.545, SEAT_Z + 0.222), black_plastic, 12)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16, radius=1.0)
+knob = bpy.context.active_object
+bpy.context.scene.collection.objects.unlink(knob) if knob.name in bpy.context.scene.collection.objects else None
+for c_ in list(knob.users_collection):
+    c_.objects.unlink(knob)
+knob.name = knob.data.name = "Console_Shifter_Knob"
+for v in knob.data.vertices:                      # egg: fuller at the top, where the palm rests
+    v.co.x *= 0.021 * (1 + 0.12 * v.co.z)
+    v.co.y *= 0.026 * (1 + 0.12 * v.co.z)
+    v.co.z *= 0.034
+knob.data.materials.append(leather)
+knob.data.shade_smooth()
+add(knob)
+knob.location = (0, -0.548, SEAT_Z + 0.272)
+knob.rotation_euler = (math.radians(-12), 0, 0)
+cylinder("Console_Shifter_Collar", 0.0165, 0.008, (0, -0.546, SEAT_Z + 0.242), accent, 24)
+box("Console_Shifter_Button_Trim", (0.012, 0.004, 0.012), (0, -0.522, SEAT_Z + 0.272), accent, bevel=0.003,
+    rot=(math.radians(-12), 0, 0))
 
 # ---------------------------------------------------------------------------
 # 3a. Dash, console and roof details (the source dash is a bare black shell)

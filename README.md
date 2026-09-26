@@ -122,22 +122,29 @@ rebuilds it like a real NYC yellow cab:
 - **Floor:** the tub is lowered to footwell height (0.33 m), with raised sills. A carpeted toe
   board and kick panels close the space under the dash. There are pedals (accelerator, brake and
   footrest) and black rubber floor mats.
-- **Seats:** the source's low-poly seat backs are replaced.
-  - **Front seats:** base on steel rails, side shield and recline lever, cushions with bolsters, and a
-    reclined backrest with side bolsters and a fabric centre insert. The head restraint sits on two
-    chrome posts.
-  - **Rear bench:** three seat contours, bolsters, a fold-down centre armrest with pull tab, three head
-    restraints and child-seat anchor tags.
+- **Seats:** the source's low-poly seats are replaced by sculpted upholstery. Every cushion,
+  backrest and head restraint is lofted from cross-sections and smoothed (subdivision), so the
+  seams and surfaces are curved like sewn upholstery rather than boxes. The centre panel of each
+  sitting face is a second fabric, as on the LE's two-tone cloth.
+  - **Front seats:** base on steel rails, side shield and recline lever. The cushion has thigh
+    bolsters and a raised, rolled front edge. The backrest has side bolsters, a lumbar bulge and
+    shoulders narrowing to the top. The head restraint is a rounded pad on two chrome posts in
+    guides.
+  - **Rear bench:** separate cushions and backrests for the two contoured outboard seats and the
+    flatter centre seat, a fold-down centre armrest with pull tab, three head restraints and
+    child-seat anchor tags.
 - **Steering wheel:** the source's oversized wheel is replaced by a 375 mm urethane rim (the LE's
-  wheel isn't leather), oval in section, with:
-  - a rounded trapezoid airbag pad with a badge
-  - tapered side spokes with switch panels and satin-silver trim
-  - a split lower spoke with a satin insert
+  wheel isn't leather), oval in section and swelling into thumb rests at 9 and 3 o'clock, with:
+  - a domed airbag cover, wider at the top than the bottom, with an oval chrome emblem
+  - tapered side spokes carrying the switch clusters: a round four-way pad in a satin ring (audio on
+    the left spoke, display and cruise on the right) and two small buttons outboard of it
+  - satin-silver trim on the spokes and a split lower spoke with a satin insert
   - a column shroud and two stalks
 - **Seat belts:** front belts hang stowed from D-rings on the B-pillars, with buckles on the
   console side. The rear belts come out of the parcel shelf, and the rear buckles sit in the bench.
-  There's also a centre console with an armrest, and a stubby shifter with a satin gate plate and a
-  urethane knob.
+  There's also a centre console with an armrest and the Camry Hybrid's shifter: a piano-black
+  gate panel with the staggered P-R-N-D-B gate and a satin rim, and a short lever with a satin
+  collar and an egg-shaped urethane knob.
 - **Door cards:** every door has a moulded card that follows the door's inner skin, including the
   rear door's curve round the wheel arch. Each card has:
   - a window-sill ledge up to the glass
@@ -188,6 +195,9 @@ rebuilds it like a real NYC yellow cab:
 ![Taxi TV and card reader](renders/interior_taxi_tv.png)
 ![Taximeter and driver monitor](renders/interior_dashboard.png)
 ![Centre stack and passenger dash](renders/interior_passenger_dash.png)
+![Steering wheel](renders/interior_steering_wheel.png)
+![Front passenger seat](renders/interior_front_seat.png)
+![Shifter and gate](renders/interior_shifter.png)
 ![Trunk open](renders/trunk_open.png)
 ![Trunk lid part open: shut line and split tail lamps](renders/trunk_lid_part_open.png)
 ![Front door open: window frame and door card](renders/door_open_frame_detail.png)
@@ -225,7 +235,7 @@ python3 scripts/rebrand_cemel.py            # CEMEL trunk badge (atlas repaint)
 python3 scripts/build_doors.py              # doors and trunk lid on hinges (run once)
 python3 scripts/make_interior_textures.py   # edit FARE / HACK_NO / DRIVER at the top first
 python3 scripts/build_interior.py           # interior; re-exports the .glb
-python3 scripts/render_previews.py 48 fl,side,rear,fl_open,trunk_open,cabin,tv,dash,pdash   # optional previews
+python3 scripts/render_previews.py 48 fl,side,rear,fl_open,trunk_open,cabin,tv,dash,pdash,wheel,fseat,shifter   # optional previews
 ```
 
 `build_interior.py` works on `NYC_Taxi_Cemel_2020.blend` directly and rebuilds its collection each
