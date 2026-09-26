@@ -128,8 +128,8 @@ rebuilds it like a real NYC yellow cab:
     chrome posts.
   - **Rear bench:** three seat contours, bolsters, a fold-down centre armrest with pull tab, three head
     restraints and child-seat anchor tags.
-- **Steering wheel:** the source's oversized wheel is replaced by a 375 mm leather rim (oval
-  section) with:
+- **Steering wheel:** the source's oversized wheel is replaced by a 375 mm urethane rim (the LE's
+  wheel isn't leather), oval in section, with:
   - a rounded trapezoid airbag pad with a badge
   - tapered side spokes with switch panels and satin-silver trim
   - a split lower spoke with a satin insert
@@ -137,7 +137,7 @@ rebuilds it like a real NYC yellow cab:
 - **Seat belts:** front belts hang stowed from D-rings on the B-pillars, with buckles on the
   console side. The rear belts come out of the parcel shelf, and the rear buckles sit in the bench.
   There's also a centre console with an armrest, and a stubby shifter with a satin gate plate and a
-  leather knob.
+  urethane knob.
 - **Door cards:** every door has a moulded card that follows the door's inner skin, including the
   rear door's curve round the wheel arch. Each card has:
   - a window-sill ledge up to the glass
@@ -152,6 +152,7 @@ rebuilds it like a real NYC yellow cab:
 - **Dash:** laid out like the XV70 Camry Hybrid LE in published photos and reviews:
   - an asymmetric dash split by a wave-shaped satin trim band, which runs across the passenger side
     and then down the passenger edge of the centre stack into the console
+  - a stitched, padded leatherette strip across the mid-dash above the trim band
   - a triangular piano-black centre stack angled toward the driver. The 7 in touchscreen at its top
     shows an Entune-style map and radio screen, with four silver keys and a knob on each side. The
     centre vents flank the screen, and the climate strip sits directly below it, with a phone tray
@@ -186,6 +187,7 @@ rebuilds it like a real NYC yellow cab:
 
 ![Taxi TV and card reader](renders/interior_taxi_tv.png)
 ![Taximeter and driver monitor](renders/interior_dashboard.png)
+![Centre stack and passenger dash](renders/interior_passenger_dash.png)
 ![Trunk open](renders/trunk_open.png)
 ![Trunk lid part open: shut line and split tail lamps](renders/trunk_lid_part_open.png)
 ![Front door open: window frame and door card](renders/door_open_frame_detail.png)
@@ -223,7 +225,7 @@ python3 scripts/rebrand_cemel.py            # CEMEL trunk badge (atlas repaint)
 python3 scripts/build_doors.py              # doors and trunk lid on hinges (run once)
 python3 scripts/make_interior_textures.py   # edit FARE / HACK_NO / DRIVER at the top first
 python3 scripts/build_interior.py           # interior; re-exports the .glb
-python3 scripts/render_previews.py 48 fl,side,rear,fl_open,trunk_open,cabin,tv,dash   # optional previews
+python3 scripts/render_previews.py 48 fl,side,rear,fl_open,trunk_open,cabin,tv,dash,pdash   # optional previews
 ```
 
 `build_interior.py` works on `NYC_Taxi_Cemel_2020.blend` directly and rebuilds its collection each

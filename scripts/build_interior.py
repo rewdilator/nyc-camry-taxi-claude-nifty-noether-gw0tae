@@ -418,7 +418,8 @@ for i, x in enumerate((-0.45, -0.28, 0.0, 0.14, 0.28, 0.45)):  # seat-belt buckl
 # 3d. Seat backs, head restraints, steering wheel (replacing the source's low-poly ones)
 # ---------------------------------------------------------------------------
 insert_mat = material("Interior_Seat_Insert", (0.052, 0.052, 0.056, 1), rough=0.95, sheen=0.5, grain=(700, 0.5))
-leather = material("Interior_Wheel_Leather", (0.03, 0.03, 0.031, 1), rough=0.5, grain=(1800, 0.25))
+# the LE's wheel and shift knob are urethane, not leather: matte, with a fine moulded grain
+leather = material("Interior_Wheel_Urethane", (0.032, 0.032, 0.034, 1), rough=0.62, grain=(2600, 0.18))
 accent = material("Interior_Dash_Accent_Satin", (0.22, 0.22, 0.23, 1), rough=0.3, metal=1.0, grain=(2500, 0.08))
 
 
@@ -725,6 +726,31 @@ for k, (x, z) in enumerate(band):
         verts.append(Vector((px, dash_face_y(px, pz) + 0.004, pz)))
 faces = [(2 * i, 2 * i + 2, 2 * i + 3, 2 * i + 1) for i in range(len(band) - 1)]
 sheet("Dash_Accent_Band", verts, faces, accent, 0.002).data.shade_smooth()
+# stitched, padded leatherette across the mid-dash above the trim band (as in the reviews), with
+# tonal stitching along both edges
+pad_mat = material("Interior_Dash_Pad_Leatherette", (0.045, 0.045, 0.048, 1), rough=0.5, grain=(2200, 0.3))
+stitch_mat = material("Interior_Dash_Stitching", (0.16, 0.16, 0.17, 1), rough=0.8)
+pad_x = np.linspace(-0.72, -0.22, 26)
+
+
+def dash_strip(name, z_of, half_h, mat, lift, thick):
+    verts_, faces_ = [], []
+    for x in pad_x:
+        zc = z_of(x)
+        for z in (zc - half_h, zc + half_h):
+            verts_.append(Vector((x, dash_face_y(x, z) + lift, z)))
+    faces_ = [(2 * i, 2 * i + 2, 2 * i + 3, 2 * i + 1) for i in range(len(pad_x) - 1)]
+    sheet(name, verts_, faces_, mat, thick).data.shade_smooth()
+
+
+def pad_z(x):
+    return 0.93 + 0.012 * math.sin((x + 0.70) / 0.46 * math.pi)
+
+
+dash_strip("Dash_Mid_Pad", pad_z, 0.022, pad_mat, 0.007, 0.006)
+for k, dz in enumerate((-0.016, 0.016)):
+    dash_strip(f"Dash_Mid_Pad_Stitch_{k}", lambda x, dz=dz: pad_z(x) + dz, 0.0012, stitch_mat, 0.0085, 0.001)
+
 # cup holders between the shifter and the armrest
 for x in (-0.045, 0.045):
     cylinder(f"Console_Cup_Holder_{'L' if x > 0 else 'R'}", 0.038, 0.004, (x, -0.33, 0.742), black_plastic)
