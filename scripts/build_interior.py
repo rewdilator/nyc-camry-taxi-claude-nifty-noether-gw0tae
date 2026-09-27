@@ -417,11 +417,22 @@ box("Pedal_Footrest", (0.08, 0.015, 0.22), on_toe(0.5, 0.62, 0.02), rubber, beve
 
 # Seat bases (the source seat backs float above the new floor) and rails
 for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
-    box(f"Seat_Base_{tag}", (0.44, 0.58, SEAT_Z - FLOOR_Z - 0.04), (x, -0.08, (SEAT_Z + FLOOR_Z + 0.04) / 2),
-        trim, bevel=0.02)
+    # a real seat stands on a frame, not a block: the seat pan under the cushion, four legs down to
+    # the sliding upper rails on the fixed floor rails, and a cross tube under the front
+    box(f"Seat_Pan_{tag}", (0.46, 0.50, 0.035), (x, -0.15, SEAT_Z - 0.03), black_plastic, bevel=0.012)
     for dx in (-0.17, 0.17):
-        box(f"Seat_Rail_{tag}_{'O' if dx * x > 0 else 'I'}", (0.035, 0.66, 0.035),
-            (x + dx, -0.10, FLOOR_Z + 0.0175), steel, bevel=0.004)
+        side = "O" if dx * x > 0 else "I"
+        box(f"Seat_Rail_{tag}_{side}", (0.035, 0.66, 0.022), (x + dx, -0.10, FLOOR_Z + 0.011), steel,
+            bevel=0.004)
+        box(f"Seat_Rail_Upper_{tag}_{side}", (0.028, 0.50, 0.02), (x + dx, -0.12, FLOOR_Z + 0.031), steel,
+            bevel=0.004)
+        for ly in (-0.34, 0.06):
+            h_ = SEAT_Z - 0.05 - (FLOOR_Z + 0.04)
+            box(f"Seat_Leg_{tag}_{side}_{'F' if ly < 0 else 'R'}", (0.026, 0.045, h_),
+                (x + dx, ly, FLOOR_Z + 0.04 + h_ / 2), steel, bevel=0.004,
+                rot=(math.radians(-12 if ly < 0 else 12), 0, 0))
+    tube = cylinder(f"Seat_Front_Tube_{tag}", 0.011, 0.36, (0, 0, 0), steel, 16)
+    tube.matrix_world = Matrix.Translation((x, -0.36, SEAT_Z - 0.06)) @ Matrix.Rotation(math.radians(90), 4, "Y")
 
 # Cushions on the bases, overlapping the foot of each source seat back.
 def fabric_material(name, image, tile, tint, bump=0.5):
@@ -465,7 +476,7 @@ def smoothstep(a, b, v):
 
 def pad_mesh(name, W, L, T, bolster=0.0, bol_start=0.62, bol_fade=(0.72, 0.95), lumbar=0.0, lumbar_t=0.3,
              taper=0.0, round_end=True, round_start=False, insert_u=0.56, insert_t=(0.06, 0.86), rise=0.0,
-             nx=16, nt=18, mats=None, seam=0.0, pleats=0, subsurf=2):
+             nx=16, nt=18, mats=None, seam=0.0, pleats=0, subsurf=2, thick=(1.0, 1.0), back_bulge=0.0):
     """An upholstered pad (seat back, cushion or head restraint), lofted from cross-sections.
 
     Local frame: x across, n through the pad (the sitting face is -n), t along its length (0..1 over
@@ -483,6 +494,7 @@ def pad_mesh(name, W, L, T, bolster=0.0, bol_start=0.62, bol_fade=(0.72, 0.95), 
         if round_start and t < 0.22:
             sc = min(sc, math.sqrt(max(0.04, 1 - ((0.22 - t) / 0.22) ** 2)))
         fade = 1 - smoothstep(bol_fade[0], bol_fade[1], t)
+        sc *= thick[0] + (thick[1] - thick[0]) * t          # e.g. a backrest thicker at the bottom
         front, back = [], []
         for i in range(nx):
             u = -math.cos(math.pi * i / (nx - 1))
@@ -503,7 +515,8 @@ def pad_mesh(name, W, L, T, bolster=0.0, bol_start=0.62, bol_fade=(0.72, 0.95), 
             front.append((u * w, n, t * L))
         for i in reversed(range(nx)):
             u = -math.cos(math.pi * i / (nx - 1))
-            back.append((u * w * 0.97, (T / 2) * sc + 0.008 * (1 - u * u) * sc, t * L))
+            bulge = back_bulge * math.sin(math.pi * min(max(t, 0.0), 1.0) * 0.85)
+            back.append((u * w * 0.97, (T / 2) * sc + (0.008 + bulge) * (1 - u * u) * sc, t * L))
         rings.append([bm_.verts.new(p_) for p_ in front + back])
     m_ = 2 * nx
     for j in range(nt - 1):
@@ -567,7 +580,7 @@ def place_cushion(ob, x, y_rear, z, pitch=math.radians(5)):
 CUSH_T = 0.075
 for x, tag in ((0.38, "Driver"), (-0.38, "Passenger")):
     # sculpted cushion: thigh bolsters, a slight dish, and a raised, rolled front edge
-    place_cushion(pad_mesh(f"Seat_Cushion_{tag}", 0.51, 0.52, CUSH_T + 0.02, bolster=0.045, bol_start=0.6,
+    place_cushion(pad_mesh(f"Seat_Cushion_{tag}", 0.51, 0.52, CUSH_T + 0.045, bolster=0.045, bol_start=0.6,
                            bol_fade=(0.8, 1.0), rise=0.012, taper=0.06, insert_u=0.52, insert_t=(0.1, 0.84),
                            seam=0.006, pleats=4, nx=34, nt=56, subsurf=1),
                   x, 0.10, SEAT_Z + CUSH_T / 2 + 0.005)
@@ -618,17 +631,18 @@ def tilted(name, size, pivot, local, tilt, mat, bevel=0.0, segments=3, subsurf=0
     return ob
 
 
-def seat_back(tag, x, pivot, tilt, width, height, thick, headrest=(0.27, 0.10, 0.18), bolsters=True):
+def seat_back(tag, x, pivot, tilt, width, height, thick, headrest=(0.27, 0.12, 0.19), bolsters=True):
     """Sculpted backrest (bolsters, lumbar bulge, shoulders narrowing to the top) with a head restraint
     on two chrome posts, reclined about its foot."""
     back = pad_mesh(f"Seat_Back_{tag}", width, height, thick, bolster=0.062 if bolsters else 0.012,
                     bol_start=0.6, lumbar=0.014, taper=0.2 if bolsters else 0.05,
-                    insert_u=0.55, insert_t=(0.08, 0.8), seam=0.006, pleats=5, nx=34, nt=60, subsurf=1)
+                    insert_u=0.55, insert_t=(0.08, 0.8), seam=0.006, pleats=5, nx=34, nt=60, subsurf=1,
+                    thick=(1.25, 0.8), back_bulge=0.03)
     place_back(back, pivot, tilt, x)
     if headrest:
         hw, hd, hh = headrest
         hr = pad_mesh(f"Seat_Headrest_{tag}", hw, hh, hd, taper=0.14, round_start=True, insert_u=0.62,
-                      insert_t=(0.2, 0.8), seam=0.004, nx=24, nt=24, subsurf=1)
+                      insert_t=(0.2, 0.8), seam=0.004, nx=24, nt=24, subsurf=1, back_bulge=0.02)
         place_back(hr, pivot, tilt, x, height + 0.06)
         for px in (-0.06, 0.06):
             post = cylinder(f"Seat_Headrest_Post_{tag}_{'L' if px > 0 else 'R'}", 0.0055, 0.09, (0, 0, 0), chrome, 10)

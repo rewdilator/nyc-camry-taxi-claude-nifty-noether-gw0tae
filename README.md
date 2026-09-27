@@ -140,10 +140,13 @@ rebuilds it like a real NYC yellow cab:
   box-projected onto the seat), as on the LE's two-tone cloth. It is framed by a sewn seam groove
   with a round piping cord on each side and crossed by stitched pleats. The bolster cloth has a
   woven (warp and weft) surface texture.
-  - **Front seats:** base on steel rails, a moulded outboard side shield with the recline lever (and
-    the height-adjust pump lever on the driver's seat). The cushion has thigh
-    bolsters and a raised, rolled front edge. The backrest has side bolsters, a lumbar bulge and
-    shoulders narrowing to the top. The head restraint is a rounded pad on two chrome posts in
+  - **Front seats:** a real seat frame instead of a solid block: the seat pan under the cushion,
+    four angled legs down to the sliding upper rails on the floor rails, and a cross tube under
+    the front. A moulded outboard side shield carries the recline lever (and the height-adjust pump
+    lever on the driver's seat). The cushion has thigh
+    bolsters and a raised, rolled front edge. The backrest has side bolsters, a lumbar bulge,
+    shoulders narrowing to the top, and a moulded convex back; it is thicker at the bottom than at
+    the top, as real seats are. The head restraint is a rounded pad on two chrome posts in
     guides, one with the release button.
   - **Rear bench:** separate cushions and backrests for the two contoured outboard seats and the
     flatter centre seat, a fold-down centre armrest with pull tab, three head restraints and
@@ -222,6 +225,7 @@ rebuilds it like a real NYC yellow cab:
 ![Steering wheel in studio light](renders/steering_wheel_studio.png)
 ![Front passenger seat](renders/interior_front_seat.png)
 ![Front seats from behind](renders/interior_front_seats_top.png)
+![Driver's seat in studio light](renders/seat_studio.png)
 ![Shifter and gate](renders/interior_shifter.png)
 ![Trunk open](renders/trunk_open.png)
 ![Trunk lid part open: shut line and split tail lamps](renders/trunk_lid_part_open.png)
