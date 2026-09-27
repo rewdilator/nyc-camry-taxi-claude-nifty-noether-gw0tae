@@ -154,9 +154,11 @@ rebuilds it like a real NYC yellow cab:
   - one moulded spoke body, as on the real wheel: the two side spokes and the lower spoke that
     narrows into a V down to six o'clock, swept from its outline with rounded (subdivided) edges
     and running into the rim
-  - a large cushioned airbag pad, wider at the top and narrowing into the lower spoke, with a dark
-    shut line round it, carrying the A+ badge
-  - piano-black switch panels set flush into the side spokes: a round four-way pad with a centre
+  - a large domed airbag cover with an arched top edge and big rounded shoulders, drawing in to a
+    rounded point where it meets the lower spoke. It is built as a radial grid (rings of the outline
+    shrunk toward its centre over the crown), so it subdivides into a smooth dome with no creases,
+    and it stands proud of the spoke body, carrying the A+ badge
+  - long, rounded piano-black switch panels running from the pad most of the way to the rim: a round four-way pad with a centre
     button in a silver ring, two keys above it and two below (audio on the left, display and cruise
     on the right)
   - a thin bright-silver inlay along both edges of the V
@@ -217,6 +219,7 @@ rebuilds it like a real NYC yellow cab:
 ![Taximeter and driver monitor](renders/interior_dashboard.png)
 ![Centre stack and passenger dash](renders/interior_passenger_dash.png)
 ![Steering wheel](renders/interior_steering_wheel.png)
+![Steering wheel in studio light](renders/steering_wheel_studio.png)
 ![Front passenger seat](renders/interior_front_seat.png)
 ![Front seats from behind](renders/interior_front_seats_top.png)
 ![Shifter and gate](renders/interior_shifter.png)

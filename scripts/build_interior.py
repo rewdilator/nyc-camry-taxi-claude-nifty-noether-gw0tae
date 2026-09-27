@@ -706,8 +706,8 @@ for i in range(nu):
     for j in range(nv):
         b = 2 * math.pi * j / nv
         # thumb rests: the rim swells where the spokes meet it at 9 and 3 o'clock
-        g = 1 + 0.28 * max(math.exp(-((a - math.radians(-8)) / 0.30) ** 2),
-                           math.exp(-((a - math.radians(188)) / 0.30) ** 2))
+        g = 1 + 0.07 * max(math.exp(-((a - math.radians(-8)) / 0.45) ** 2),
+                           math.exp(-((a - math.radians(188)) / 0.45) ** 2))
         rr = R_RIM + r_rim * g * math.cos(b)
         row.append(bm.verts.new((rr * math.cos(a), r_rim_y * g * math.sin(b), rr * math.sin(a))))
     ring.append(row)
@@ -729,8 +729,8 @@ for i in range(nseg):
     a0, a1 = 2 * math.pi * i / nseg, 2 * math.pi * (i + 0.55) / nseg
     quad_ = []
     for a, dy in ((a0, -0.0012), (a1, -0.0012), (a1, 0.0012), (a0, 0.0012)):
-        g = 1 + 0.28 * max(math.exp(-((a - math.radians(-8)) / 0.30) ** 2),
-                           math.exp(-((a - math.radians(188)) / 0.30) ** 2))
+        g = 1 + 0.07 * max(math.exp(-((a - math.radians(-8)) / 0.45) ** 2),
+                           math.exp(-((a - math.radians(188)) / 0.45) ** 2))
         rr = R_RIM - r_rim * g - 0.0004
         quad_.append(bm.verts.new((rr * math.cos(a), dy, rr * math.sin(a))))
     bm.faces.new(quad_)
@@ -791,40 +791,6 @@ def rounded(poly, r=0.012, n=4):
     return out
 
 
-# airbag cover: the big cushioned pad of the XV70 wheel, wider at the top and narrowing into the
-# lower spoke, lofted from its top (t=0) down; the A+ badge sits in its middle (see Badges below)
-hub = pad_mesh("Steering_Wheel_Hub", 0.18, 0.148, 0.058, taper=0.34, round_start=True, insert_u=0.0,
-               nx=16, nt=16, mats=(leather, leather))
-hub.matrix_world = WM @ Matrix.Translation((0, 0.012, 0.066)) @ Matrix(
-    ((1, 0, 0, 0), (0, -1, 0, 0), (0, 0, -1, 0), (0, 0, 0, 1)))      # x, n, t -> x, -n (to driver), -t
-# shut line round the airbag cover: a slightly larger dark shell just behind it reads as the gap
-gap = pad_mesh("Steering_Wheel_Hub_Gap", 0.186, 0.154, 0.05, taper=0.34, round_start=True, insert_u=0.0,
-               nx=16, nt=16, mats=(black_plastic, black_plastic))
-gap.matrix_world = WM @ Matrix.Translation((0, 0.006, 0.069)) @ Matrix(
-    ((1, 0, 0, 0), (0, -1, 0, 0), (0, 0, -1, 0), (0, 0, 0, 1)))
-for side in (-1, 1):
-    tag = "L" if side > 0 else "R"
-    panel = [(side * 0.094, 0.024), (side * 0.158, 0.018), (side * 0.158, -0.036), (side * 0.094, -0.042)]
-    wheel_slab(f"Steering_Wheel_Switch_Panel_{tag}", rounded(panel[::side], 0.012), 0.012, 0.0195, piano,
-               bevel=0.002)
-    # Camry switch cluster: a round four-way pad with a centre button in a satin ring (audio on the
-    # left spoke, display and cruise on the right), two keys above it and two below
-    pc = Vector((side * 0.124, 0.0215, -0.006))
-    face = Matrix.Rotation(math.radians(-90), 4, "X")
-    ring_ = cylinder(f"Steering_Wheel_Pad_Ring_{tag}", 0.0195, 0.004, (0, 0, 0), wheel_silver, 32)
-    ring_.matrix_world = WM @ Matrix.Translation(pc) @ face
-    pad_ = cylinder(f"Steering_Wheel_Four_Way_{tag}", 0.0165, 0.006, (0, 0, 0), trim, 32)
-    pad_.matrix_world = WM @ Matrix.Translation(pc + Vector((0, 0.002, 0))) @ face
-    ok_ = cylinder(f"Steering_Wheel_OK_{tag}", 0.0065, 0.004, (0, 0, 0), accent, 20)
-    ok_.matrix_world = WM @ Matrix.Translation(pc + Vector((0, 0.005, 0))) @ face
-    for k, (dx, dz) in enumerate(((0, 0.0115), (0, -0.0115), (0.0115, 0), (-0.0115, 0))):
-        wheel_part(f"Steering_Wheel_Arrow_{tag}_{k}", (0.0035, 0.002, 0.0035), pc + Vector((dx, 0.0056, dz)),
-                   accent, bevel=0.001)
-    for k, (dx, dz) in enumerate(((-0.011, 0.024), (0.011, 0.024), (-0.011, -0.029), (0.011, -0.029))):
-        wheel_part(f"Steering_Wheel_Key_{tag}_{k}", (0.017, 0.005, 0.007), pc + Vector((side * dx, -0.001, dz)),
-                   trim, bevel=0.0025)
-
-
 def offset_poly(poly, d):
     """Offset a closed 2D polygon inward by d (positive d shrinks a counter-clockwise polygon)."""
     out = []
@@ -868,10 +834,104 @@ def moulded(name, outline, layers, mat, subsurf=2):
     return ob
 
 
+# airbag cover: the big cushioned pad of the XV70 wheel, wider at the top and narrowing into the
+# lower spoke, lofted from its top (t=0) down; the A+ badge sits in its middle (see Badges below)
+# arched top edge, big rounded shoulders, sides drawing in to a rounded point at the bottom where it
+# meets the lower spoke; swept through inset layers so it domes toward the driver like a real
+# airbag cover, standing proud of the spoke body with a clean shut line round it
+PAD = []
+for k in range(9):                                   # arched top, from right shoulder to left
+    xx = 0.070 - 0.140 * k / 8
+    PAD.append((xx, 0.066 + 0.008 * (1 - (xx / 0.07) ** 2)))
+PAD = [(0.088, 0.046)] + PAD + [(-0.088, 0.046)]
+PAD += [(-0.090, 0.018), (-0.082, -0.020), (-0.064, -0.056), (-0.040, -0.082), (-0.016, -0.094),
+        (0.016, -0.094), (0.040, -0.082), (0.064, -0.056), (0.082, -0.020), (0.090, 0.018)]
+PAD = rounded(PAD, 0.006, 3)
+if sum(PAD[k][0] * PAD[(k + 1) % len(PAD)][1] - PAD[(k + 1) % len(PAD)][0] * PAD[k][1]
+       for k in range(len(PAD))) < 0:
+    PAD = PAD[::-1]
+
+
+def resample(poly, n):
+    """`n` points evenly spaced along a closed 2D polygon."""
+    pts = [Vector(p_) for p_ in poly] + [Vector(poly[0])]
+    seg = [(a, b, (b - a).length) for a, b in zip(pts, pts[1:])]
+    total = sum(L_ for _, _, L_ in seg)
+    out, k, acc = [], 0, 0.0
+    for i in range(n):
+        d = total * i / n
+        while acc + seg[k][2] < d:
+            acc += seg[k][2]
+            k += 1
+        a, b, L_ = seg[k]
+        out.append(a.lerp(b, (d - acc) / L_))
+    return out
+
+
+def dome(name, outline, profile, mat, n=64):
+    """A domed cover: rings of the outline shrunk toward its centre (scale f) at height y, from the
+    back rim through the side wall over the crown; all quads, so it subdivides without creases."""
+    ring2 = resample(outline, n)
+    c = sum(ring2, Vector((0, 0))) / n
+    bm_ = bmesh.new()
+    rings_ = [[bm_.verts.new((c.x + (p_.x - c.x) * f, y, c.y + (p_.y - c.y) * f)) for p_ in ring2]
+              for f, y in profile]
+    for a, b in zip(rings_, rings_[1:]):
+        for k in range(n):
+            bm_.faces.new((a[k], a[(k + 1) % n], b[(k + 1) % n], b[k]))
+    top = bm_.verts.new((c.x, profile[-1][1] + 0.0003, c.y))
+    for k in range(n):
+        bm_.faces.new((rings_[-1][k], rings_[-1][(k + 1) % n], top))
+    back = bm_.verts.new((c.x, profile[0][1], c.y))
+    for k in range(n):
+        bm_.faces.new((rings_[0][(k + 1) % n], rings_[0][k], back))
+    bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces)
+    me_ = bpy.data.meshes.new(name)
+    bm_.to_mesh(me_)
+    bm_.free()
+    me_.materials.append(mat)
+    me_.shade_smooth()
+    ob = bpy.data.objects.new(name, me_)
+    sub_ = ob.modifiers.new("Subsurf", "SUBSURF")
+    sub_.levels = sub_.render_levels = 2
+    add(ob)
+    ob.matrix_world = WM
+    return ob
+
+
+dome("Steering_Wheel_Hub", PAD, [(0.992, 0.004), (1.0, 0.010), (1.0, 0.022), (0.985, 0.030), (0.95, 0.037),
+                                 (0.86, 0.042), (0.70, 0.0455), (0.48, 0.0472), (0.25, 0.0480), (0.08, 0.0482)],
+     leather)
+for side in (-1, 1):
+    tag = "L" if side > 0 else "R"
+    panel = [(0.094, 0.030), (0.132, 0.030), (0.160, 0.024), (0.166, 0.010), (0.164, -0.034), (0.150, -0.044),
+             (0.100, -0.046), (0.094, -0.040)]
+    panel = rounded([(side * x, z) for x, z in panel], 0.007, 3)
+    if side < 0:
+        panel = panel[::-1]
+    wheel_slab(f"Steering_Wheel_Switch_Panel_{tag}", panel, 0.012, 0.0200, piano, bevel=0.0025, smooth=False)
+    # Camry switch cluster: a round four-way pad with a centre button in a satin ring (audio on the
+    # left spoke, display and cruise on the right), two keys above it and two below
+    pc = Vector((side * 0.128, 0.022, -0.007))
+    face = Matrix.Rotation(math.radians(-90), 4, "X")
+    ring_ = cylinder(f"Steering_Wheel_Pad_Ring_{tag}", 0.0195, 0.004, (0, 0, 0), wheel_silver, 32)
+    ring_.matrix_world = WM @ Matrix.Translation(pc) @ face
+    pad_ = cylinder(f"Steering_Wheel_Four_Way_{tag}", 0.0165, 0.006, (0, 0, 0), trim, 32)
+    pad_.matrix_world = WM @ Matrix.Translation(pc + Vector((0, 0.002, 0))) @ face
+    ok_ = cylinder(f"Steering_Wheel_OK_{tag}", 0.0065, 0.004, (0, 0, 0), accent, 20)
+    ok_.matrix_world = WM @ Matrix.Translation(pc + Vector((0, 0.005, 0))) @ face
+    for k, (dx, dz) in enumerate(((0, 0.0115), (0, -0.0115), (0.0115, 0), (-0.0115, 0))):
+        wheel_part(f"Steering_Wheel_Arrow_{tag}_{k}", (0.0035, 0.002, 0.0035), pc + Vector((dx, 0.0056, dz)),
+                   accent, bevel=0.001)
+    for k, (dx, dz) in enumerate(((-0.011, 0.024), (0.011, 0.024), (-0.011, -0.029), (0.011, -0.029))):
+        wheel_part(f"Steering_Wheel_Key_{tag}_{k}", (0.017, 0.005, 0.007), pc + Vector((side * dx, -0.001, dz)),
+                   trim, bevel=0.0025)
+
+
 # Spoke body, moulded in one piece like the real wheel: the two side spokes (carrying the switch
 # clusters) and the lower spoke that narrows into a V down to six o'clock, all running into the rim.
-half = [(0.000, 0.036), (0.070, 0.037), (0.125, 0.030), (0.160, 0.024), (0.176, 0.020), (0.180, -0.014),
-        (0.176, -0.048), (0.150, -0.052), (0.112, -0.058), (0.092, -0.074), (0.072, -0.110), (0.052, -0.148),
+half = [(0.000, 0.036), (0.070, 0.038), (0.125, 0.036), (0.160, 0.031), (0.176, 0.026), (0.180, -0.014),
+        (0.176, -0.050), (0.150, -0.054), (0.112, -0.058), (0.092, -0.074), (0.072, -0.110), (0.052, -0.148),
         (0.036, -0.176), (0.020, -0.186)]
 SPOKE = [(x, z) for x, z in half] + [(-x, z) for x, z in reversed(half[1:])]
 SPOKE = SPOKE[::-1] if sum(SPOKE[k][0] * SPOKE[(k + 1) % len(SPOKE)][1] - SPOKE[(k + 1) % len(SPOKE)][0]
@@ -1936,7 +1996,7 @@ for sx in (1, -1):
         cap.matrix_world = (Matrix.Translation((sx * 0.8855, wy, 0.33))
                             @ Matrix.Rotation(math.radians(90 * sx), 4, "Y"))
         badge(f"Badge_Wheel_{tag}{side}", 0.03, Vector((sx * 0.8875, wy, 0.33)), (sx, 0, 0))
-badge("Badge_Steering_Wheel", 0.034, WM @ Vector((0, 0.043, -0.004)), WM.to_3x3() @ Vector((0, 1, 0)),
+badge("Badge_Steering_Wheel", 0.034, WM @ Vector((0, 0.0465, -0.006)), WM.to_3x3() @ Vector((0, 1, 0)),
       up=WM.to_3x3() @ Vector((0, 0, 1)))
 
 # ---------------------------------------------------------------------------
